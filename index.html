@@ -52,7 +52,12 @@
             const [isLoggedIn, setIsLoggedIn] = useState(false);
             const [currentUser, setCurrentUser] = useState(null);
             const [connectionError, setConnectionError] = useState(null);
+            const [csvFile, setCsvFile] = useState(null);
+            const [csvCards, setCsvCards] = useState([]);
+            const [csvValidationResults, setCsvValidationResults] = useState([]);
+            const [isProcessingCsv, setIsProcessingCsv] = useState(false);
             const fileInputRef = useRef(null);
+            const csvInputRef = useRef(null);
 
             // User management functions with Supabase
             const registerUser = async (email, password, username) => {
@@ -146,11 +151,13 @@
                         return;
                     }
 
-                    if (data) {
+                    if (data && data.vocabulary) {
                         setAllVocabulary(data.vocabulary || []);
                         setLastSyncTime(new Date(data.updated_at));
                     } else {
+                        // First time user - initialize empty vocabulary
                         setAllVocabulary([]);
+                        await saveToDatabase([]);
                     }
                 } catch (error) {
                     console.error('Error loading vocabulary:', error);
@@ -287,11 +294,117 @@
                 addManualCard(manualCzech, manualEnglish);
             };
 
-            const forceSync = async () => {
-                await saveToDatabase(allVocabulary);
+            // CSV processing functions
+            const handleCsvUpload = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                if (!file.name.toLowerCase().endsWith('.csv')) {
+                    alert('Please upload a CSV file');
+                    return;
+                }
+
+                setIsProcessingCsv(true);
+                setCurrentScreen('csvProcessing');
+
+                try {
+                    const text = await file.text();
+                    parseCsvText(text);
+                } catch (error) {
+                    console.error('Error reading CSV file:', error);
+                    alert('Error reading CSV file. Please try again.');
+                    setCurrentScreen('home');
+                }
+
+                setIsProcessingCsv(false);
             };
 
-            // Image processing functions
+            const parseCsvText = (csvText) => {
+                console.log('Parsing CSV text:', csvText);
+                
+                const lines = csvText.split('\n').filter(line => line.trim());
+                const parsed = [];
+                const validationRes = [];
+
+                lines.forEach((line, index) => {
+                    // Skip header row if it exists
+                    if (index === 0 && (line.toLowerCase().includes('czech') || line.toLowerCase().includes('english'))) {
+                        return;
+                    }
+
+                    // Try different CSV delimiters
+                    let parts = [];
+                    if (line.includes(',')) {
+                        parts = line.split(',');
+                    } else if (line.includes(';')) {
+                        parts = line.split(';');
+                    } else if (line.includes('\t')) {
+                        parts = line.split('\t');
+                    }
+
+                    if (parts.length >= 2 && parsed.length < 300) {
+                        let czech = parts[0].trim().replace(/^["'](.*)["']$/, '$1');
+                        let english = parts[1].trim().replace(/^["'](.*)["']$/, '$1');
+
+                        if (czech.length >= 2 && english.length >= 2) {
+                            const validation = validateCardPair(czech, english);
+                            parsed.push({ czech, english, id: index });
+                            validationRes.push(validation);
+                            console.log(`Found CSV pair: "${czech}" - "${english}"`);
+                        }
+                    }
+                });
+
+                console.log(`Parsed ${parsed.length} CSV pairs`);
+                setCsvCards(parsed);
+                setCsvValidationResults(validationRes);
+                
+                if (parsed.length === 0) {
+                    alert(`No vocabulary pairs found in CSV. Make sure your CSV has this format:\n\nczech_word,english_word\ndobrý den,good day\nděkuji,thank you`);
+                }
+            };
+
+            const addCsvCardsToVocabulary = () => {
+                const validCards = csvCards.filter((card, index) => {
+                    const validation = csvValidationResults[index];
+                    return !validation || validation.isValid || card.manuallyApproved;
+                });
+                
+                const updatedVocabulary = [...allVocabulary, ...validCards];
+                setAllVocabulary(updatedVocabulary);
+                setCsvCards([]);
+                setCsvValidationResults([]);
+                setCurrentScreen('home');
+                alert(`Added ${validCards.length} new cards from CSV to your vocabulary!`);
+                
+                // Manual sync after adding cards from CSV
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
+            };
+
+            const approveCsvCard = (index) => {
+                const updated = [...csvCards];
+                updated[index].manuallyApproved = true;
+                setCsvCards(updated);
+            };
+
+            const editCsvCard = (index, field, value) => {
+                const updated = [...csvCards];
+                updated[index][field] = value;
+                setCsvCards(updated);
+            };
+
+            const removeCsvCard = (index) => {
+                const updated = csvCards.filter((_, i) => i !== index);
+                setCsvCards(updated);
+            };
+
+            const forceSync = async () => {
+                if (!isSyncing) {
+                    await saveToDatabase(allVocabulary);
+                }
+            };
             const validateCzechWord = (word) => {
                 const cleanWord = word.toLowerCase().trim();
                 const czechChars = ['č', 'š', 'ž', 'ř', 'ď', 'ť', 'ň', 'ů', 'á', 'é', 'í', 'ó', 'ú', 'ý'];
@@ -535,18 +648,31 @@
             useEffect(() => {
                 const checkSession = async () => {
                     try {
-                        const { data: { session } } = await supabaseClient.auth.getSession();
+                        setIsLoading(true);
+                        const { data: { session }, error } = await supabaseClient.auth.getSession();
+                        
+                        if (error) {
+                            console.error('Session check error:', error);
+                            return;
+                        }
                         
                         if (session?.user) {
+                            console.log('Found existing session for user:', session.user.email);
                             setCurrentUser(session.user);
                             setUserId(session.user.id);
                             setEmail(session.user.email);
                             setIsLoggedIn(true);
                             setCurrentScreen('home');
                             await loadUserVocabulary(session.user);
+                        } else {
+                            console.log('No existing session found');
+                            setCurrentScreen('login');
                         }
                     } catch (error) {
                         console.error('Session check error:', error);
+                        setCurrentScreen('login');
+                    } finally {
+                        setIsLoading(false);
                     }
                 };
 
@@ -555,6 +681,8 @@
                 // Listen for auth changes
                 const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
                     async (event, session) => {
+                        console.log('Auth state change:', event, session?.user?.email);
+                        
                         if (event === 'SIGNED_IN' && session?.user) {
                             setCurrentUser(session.user);
                             setUserId(session.user.id);
@@ -570,6 +698,8 @@
                             setCurrentScreen('login');
                             setAllVocabulary([]);
                             setLastSyncTime(null);
+                        } else if (event === 'TOKEN_REFRESHED') {
+                            console.log('Token refreshed successfully');
                         }
                     }
                 );
@@ -788,6 +918,13 @@
                                 </button>
 
                                 <button
+                                    onClick={() => csvInputRef.current?.click()}
+                                    className="w-full bg-orange-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors mb-4"
+                                >
+                                    Upload CSV File
+                                </button>
+
+                                <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
                                 >
@@ -799,6 +936,14 @@
                                     type="file"
                                     accept="image/*"
                                     onChange={handleImageUpload}
+                                    className="hidden"
+                                />
+
+                                <input
+                                    ref={csvInputRef}
+                                    type="file"
+                                    accept=".csv"
+                                    onChange={handleCsvUpload}
                                     className="hidden"
                                 />
                             </div>
@@ -1023,6 +1168,201 @@
                                         className="bg-gray-200 text-gray-700 py-4 px-4 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
                                     >
                                         Back Home
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // CSV Processing Screen
+            if (currentScreen === 'csvProcessing') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-orange-600 to-red-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                                <div className="text-6xl mb-6">📄</div>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-4">Processing CSV</h2>
+                                
+                                {isProcessingCsv ? (
+                                    <div>
+                                        <div className="animate-spin rounded-full h-16 w-16 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
+                                        <p className="text-gray-600">Reading your CSV file...</p>
+                                        <p className="text-sm text-gray-500 mt-2">Supports up to 300 cards</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="text-4xl mb-4">✅</div>
+                                        <p className="text-gray-600 mb-6">Processing complete!</p>
+                                        
+                                        {csvCards.length > 0 ? (
+                                            <div>
+                                                <p className="text-green-600 font-semibold mb-2">
+                                                    Found {csvCards.length} vocabulary pairs
+                                                </p>
+                                                {csvValidationResults.length > 0 && (
+                                                    <div className="mb-4">
+                                                        <p className="text-sm text-gray-600">
+                                                            ✅ Valid: {csvValidationResults.filter(v => v.isValid).length} | 
+                                                            ⚠️ Needs review: {csvValidationResults.filter(v => !v.isValid).length}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={() => setCurrentScreen('editCsvCards')}
+                                                    className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-3"
+                                                >
+                                                    Review & Edit Cards
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <p className="text-red-600 mb-4">No vocabulary pairs found in CSV.</p>
+                                                <div className="text-sm text-gray-600 mb-4 p-3 bg-gray-50 rounded">
+                                                    Expected format:<br/>
+                                                    <code>czech_word,english_word<br/>
+                                                    dobrý den,good day<br/>
+                                                    děkuji,thank you</code>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        <button
+                                            onClick={() => setCurrentScreen('home')}
+                                            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                        >
+                                            Back to Home
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Edit CSV Cards Screen
+            if (currentScreen === 'editCsvCards') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-orange-600 to-red-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl">
+                                <div className="flex items-center justify-between p-6 border-b">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-xl font-semibold">Review CSV Cards ({csvCards.length})</h2>
+                                    <div></div>
+                                </div>
+                                
+                                <div className="p-6">
+                                    <div className="max-h-96 overflow-y-auto mb-6">
+                                        {csvCards.map((card, index) => {
+                                            const validation = csvValidationResults[index];
+                                            const isValid = !validation || validation.isValid || card.manuallyApproved;
+                                            
+                                            return (
+                                                <div key={index} className={`p-4 rounded-lg mb-4 border-2 ${
+                                                    isValid ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
+                                                }`}>
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm text-gray-500 mr-2">Card {index + 1}</span>
+                                                            {isValid ? (
+                                                                <span className="text-green-600 text-sm">✅ Valid</span>
+                                                            ) : (
+                                                                <span className="text-yellow-600 text-sm">⚠️ Needs review</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            {!isValid && (
+                                                                <button
+                                                                    onClick={() => approveCsvCard(index)}
+                                                                    className="text-green-600 hover:text-green-700 text-sm px-2 py-1 bg-green-100 rounded"
+                                                                >
+                                                                    Approve
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => removeCsvCard(index)}
+                                                                className="text-red-500 hover:text-red-700 text-sm px-2 py-1 bg-red-100 rounded"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {validation && !validation.isValid && !card.manuallyApproved && (
+                                                        <div className="mb-3 p-2 bg-yellow-100 rounded text-sm">
+                                                            <strong>Issues detected:</strong>
+                                                            <ul className="list-disc list-inside text-yellow-700">
+                                                                {validation.issues.map((issue, i) => (
+                                                                    <li key={i}>{issue}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                Czech {!validation?.czechValid && !card.manuallyApproved && (
+                                                                    <span className="text-red-500">⚠️</span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={card.czech}
+                                                                onChange={(e) => editCsvCard(index, 'czech', e.target.value)}
+                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                                            />
+                                                        </div>
+                                                        
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                English {!validation?.englishValid && !card.manuallyApproved && (
+                                                                    <span className="text-red-500">⚠️</span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={card.english}
+                                                                onChange={(e) => editCsvCard(index, 'english', e.target.value)}
+                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    {csvCards.length > 0 && (
+                                        <div className="mb-4 p-3 bg-orange-50 rounded-lg">
+                                            <div className="text-sm text-orange-700">
+                                                <strong>Summary:</strong> {csvCards.filter((_, i) => !csvValidationResults[i] || csvValidationResults[i].isValid || csvCards[i].manuallyApproved).length} cards ready to add
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {csvCards.length > 0 && (
+                                        <button
+                                            onClick={addCsvCardsToVocabulary}
+                                            className="w-full bg-orange-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-orange-700 transition-colors mb-3"
+                                        >
+                                            Add Valid Cards to Vocabulary
+                                        </button>
+                                    )}
+                                    
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                    >
+                                        Cancel
                                     </button>
                                 </div>
                             </div>
