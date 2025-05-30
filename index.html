@@ -575,70 +575,77 @@
 };
 
             const handleImageUpload = async (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
 
-                setIsProcessingImage(true);
-                setCurrentScreen('imageProcessing');
+    setIsProcessingImage(true);
+    setCurrentScreen('imageProcessing');
 
-                try {
-                    console.log('Starting OCR process...');
-                    
-                    if (window.Tesseract) {
-                        // Preprocess the image for better OCR
-                        const processedImage = await preprocessImage(file);
-                        
-                        // Enhanced OCR configuration
-                        const { data: { text } } = await window.Tesseract.recognize(processedImage, 'ces+eng', {
-                            logger: m => {
-                                console.log(m);
-                                if (m.status === 'recognizing text') {
-                                    // You could add a progress bar here
-                                }
-                            },
-                            tessedit_pageseg_mode: '6', // Assume uniform block of text
-                            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789 -:→=.,!?()[]{}/"\'',
-                            preserve_interword_spaces: '1',
-                        });
-                        
-                        console.log('OCR Result:', text);
-                        
-                        if (text.trim()) {
-                            parseExtractedText(text);
-                        } else {
-                            // Fallback: Ask user to manually enter text
-                            const userText = prompt(`OCR couldn't extract clear text. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
-                            if (userText) {
-                                parseExtractedText(userText);
-                            } else {
-                                setCurrentScreen('home');
-                            }
-                        }
-                    } else {
-                        // Fallback: Ask user to manually enter text they see in the image
-                        const userText = prompt(`OCR library not loaded. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
-                        if (userText) {
-                            parseExtractedText(userText);
-                        } else {
-                            setCurrentScreen('home');
-                        }
+    try {
+        console.log('Starting OCR process...');
+
+        if (window.Tesseract) {
+            const processedImage = await preprocessImage(file);
+
+            // ⬇️ CREATE WORKER INSTEAD OF window.Tesseract.recognize
+            const worker = await window.Tesseract.createWorker({
+                logger: m => {
+                    console.log(m);
+                    if (m.status === 'recognizing text') {
+                        // Progress bar could be updated here
                     }
-                } catch (error) {
-                    console.error('Error processing image:', error);
-                    
-                    // Fallback: Ask user to manually enter text
-                    const userText = prompt(`Error processing image. Please manually enter the Czech-English pairs you see (format: "czech - english", one per line):`);
-                    if (userText) {
-                        parseExtractedText(userText);
-                    } else {
-                        alert('Error processing image. Please try again with a clearer image.');
-                        setCurrentScreen('home');
-                    }
+                },
+            });
+
+            await worker.loadLanguage('ces+eng');
+            await worker.initialize('ces+eng');
+
+            // Set OCR parameters
+            await worker.setParameters({
+                tessedit_pageseg_mode: 6, // 6 = Assume a single uniform block of text
+                user_defined_dpi: 300,    // Force high-resolution DPI
+                preserve_interword_spaces: 1, // Keep spaces
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789 -:→=.,!?()[]{}/"\''
+            });
+
+            // Run OCR
+            const { data: { text } } = await worker.recognize(processedImage);
+
+            console.log('OCR Result:', text);
+
+            await worker.terminate();
+
+            if (text.trim()) {
+                parseExtractedText(text);
+            } else {
+                const userText = prompt(`OCR couldn't extract clear text. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
+                if (userText) {
+                    parseExtractedText(userText);
+                } else {
+                    setCurrentScreen('home');
                 }
-                
-                setIsProcessingImage(false);
-            };
+            }
+        } else {
+            const userText = prompt(`OCR library not loaded. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
+            if (userText) {
+                parseExtractedText(userText);
+            } else {
+                setCurrentScreen('home');
+            }
+        }
+    } catch (error) {
+        console.error('Error processing image:', error);
+        const userText = prompt(`Error processing image. Please manually enter the Czech-English pairs you see (format: "czech - english", one per line):`);
+        if (userText) {
+            parseExtractedText(userText);
+        } else {
+            alert('Error processing image. Please try again with a clearer image.');
+            setCurrentScreen('home');
+        }
+    }
 
+    setIsProcessingImage(false);
+};
             const addNewCardsToVocabulary = () => {
                 const validCards = newCards.filter((card, index) => {
                     const validation = validationResults[index];
