@@ -22,8 +22,8 @@
         const { useState, useEffect, useRef } = React;
         const { createClient } = supabase;
 
-        // Initialize Supabase client with your credentials
-        const supabaseUrl = 'https://luydswtuvstibpvruyim.supabase.co';
+        // Supabase credentials
+        const supabaseUrl = 'https://luydswutvsttbpvruylm.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1eWRzd3V0dnN0dGJwdnJ1eWxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MDQzMjgsImV4cCI6MjA2NDE4MDMyOH0.RvrljR2_T4oDCWkyrvCxPSRc7aiUYflzQ8sX_cU-urI';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
@@ -46,17 +46,19 @@
             const [isLoading, setIsLoading] = useState(false);
             const [isSyncing, setIsSyncing] = useState(false);
             const [lastSyncTime, setLastSyncTime] = useState(null);
-            const [username, setUsername] = useState('');
+            const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [isRegistering, setIsRegistering] = useState(false);
             const [isLoggedIn, setIsLoggedIn] = useState(false);
             const [currentUser, setCurrentUser] = useState(null);
+            const [connectionError, setConnectionError] = useState(null);
             const fileInputRef = useRef(null);
 
             // User management functions with Supabase
             const registerUser = async (email, password, username) => {
                 try {
                     setIsLoading(true);
+                    setConnectionError(null);
                     
                     // Register with Supabase Auth
                     const { data, error } = await supabaseClient.auth.signUp({
@@ -70,7 +72,8 @@
                     });
 
                     if (error) {
-                        alert(`Registration failed: ${error.message}`);
+                        console.error('Registration error:', error);
+                        setConnectionError(`Registration failed: ${error.message}`);
                         return false;
                     }
 
@@ -78,7 +81,7 @@
                     return true;
                 } catch (error) {
                     console.error('Registration error:', error);
-                    alert('Registration failed. Please try again.');
+                    setConnectionError('Registration failed. Please check your internet connection and try again.');
                     return false;
                 } finally {
                     setIsLoading(false);
@@ -88,6 +91,7 @@
             const loginUser = async (email, password) => {
                 try {
                     setIsLoading(true);
+                    setConnectionError(null);
                     
                     const { data, error } = await supabaseClient.auth.signInWithPassword({
                         email: email,
@@ -95,14 +99,15 @@
                     });
 
                     if (error) {
-                        alert(`Login failed: ${error.message}`);
+                        console.error('Login error:', error);
+                        setConnectionError(`Login failed: ${error.message}`);
                         return false;
                     }
 
                     return data.user;
                 } catch (error) {
                     console.error('Login error:', error);
-                    alert('Login failed. Please try again.');
+                    setConnectionError('Login failed. Please check your internet connection and try again.');
                     return false;
                 } finally {
                     setIsLoading(false);
@@ -116,7 +121,7 @@
                     setCurrentUser(null);
                     setUserId('');
                     setAllVocabulary([]);
-                    setUsername('');
+                    setEmail('');
                     setPassword('');
                     setCurrentScreen('login');
                     setLastSyncTime(null);
@@ -184,22 +189,29 @@
 
             const handleLogin = async (e) => {
                 e.preventDefault();
-                if (!username.trim() || !password.trim()) {
-                    alert('Please enter both email and password');
+                if (!email.trim() || !password.trim()) {
+                    setConnectionError('Please enter both email and password');
+                    return;
+                }
+
+                // Basic email validation
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email.trim())) {
+                    setConnectionError('Please enter a valid email address');
                     return;
                 }
 
                 if (isRegistering) {
                     // For registration, use email prefix as username if no separate username provided
-                    const usernameForRegistration = username.split('@')[0]; // Use email prefix as username
+                    const usernameForRegistration = email.split('@')[0]; // Use email prefix as username
                     
-                    const success = await registerUser(username.trim(), password, usernameForRegistration);
+                    const success = await registerUser(email.trim(), password, usernameForRegistration);
                     if (success) {
                         setIsRegistering(false);
                         setPassword('');
                     }
                 } else {
-                    const user = await loginUser(username.trim(), password);
+                    const user = await loginUser(email.trim(), password);
                     if (user) {
                         setCurrentUser(user);
                         setUserId(user.id);
@@ -405,7 +417,7 @@
                         if (session?.user) {
                             setCurrentUser(session.user);
                             setUserId(session.user.id);
-                            setUsername(session.user.email);
+                            setEmail(session.user.email);
                             setIsLoggedIn(true);
                             setCurrentScreen('home');
                             await loadUserVocabulary(session.user);
@@ -423,14 +435,14 @@
                         if (event === 'SIGNED_IN' && session?.user) {
                             setCurrentUser(session.user);
                             setUserId(session.user.id);
-                            setUsername(session.user.email);
+                            setEmail(session.user.email);
                             setIsLoggedIn(true);
                             setCurrentScreen('home');
                             await loadUserVocabulary(session.user);
                         } else if (event === 'SIGNED_OUT') {
                             setCurrentUser(null);
                             setUserId('');
-                            setUsername('');
+                            setEmail('');
                             setIsLoggedIn(false);
                             setCurrentScreen('login');
                             setAllVocabulary([]);
@@ -468,20 +480,27 @@
                                 </p>
                             </div>
 
+                            {connectionError && (
+                                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                                    <div className="text-red-800 text-sm">{connectionError}</div>
+                                </div>
+                            )}
+
                             <form onSubmit={handleLogin} className="space-y-6">
                                 <div>
-    <label className="block text-sm font-medium text-gray-700 mb-2">
-        Email Address
-    </label>
-    <input
-        type="email"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="Enter your email address"
-        className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-        required
-    />
-</div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Email Address
+                                    </label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="Enter your email address"
+                                        className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                                        required
+                                    />
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Password
@@ -493,7 +512,7 @@
                                         placeholder="Enter your password"
                                         className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
                                         required
-                                        minLength="4"
+                                        minLength="6"
                                     />
                                 </div>
 
@@ -511,6 +530,7 @@
                                     onClick={() => {
                                         setIsRegistering(!isRegistering);
                                         setPassword('');
+                                        setConnectionError(null);
                                     }}
                                     className="text-blue-600 hover:text-blue-700 underline"
                                 >
@@ -690,20 +710,6 @@
                                             value={manualCzech}
                                             onChange={(e) => setManualCzech(e.target.value)}
                                             placeholder="Enter Czech word..."
-                                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            English Translation
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={manualEnglish}
-                                            onChange={(e) => setManualEnglish(e.target.value)}
-                                            placeholder="Enter English translation..."
                                             className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
                                             required
                                         />
@@ -1104,4 +1110,18 @@
         ReactDOM.render(<CzechFlashcardApp />, document.getElementById('root'));
     </script>
 </body>
-</html>
+</html>-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            English Translation
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={manualEnglish}
+                                            onChange={(e) => setManualEnglish(e.target.value)}
+                                            placeholder="Enter English translation..."
+                                            className="w-full p-4 border
