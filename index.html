@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Czech Flashcard App - Cloud Sync</title>
+    <title>Czech Flashcard App - Multi-User</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇨🇿</text></svg>">
-    <meta name="description" content="Learn Czech vocabulary with cloud-synced flashcards. Add cards from images, manual entry, and sync across all devices!">
+    <meta name="description" content="Learn Czech vocabulary with multi-user cloud-synced flashcards!">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#3B82F6">
 </head>
 <body>
@@ -20,169 +19,9 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        const czechVocabulary = [
-            { czech: "zaplatit", english: "pay" },
-            { czech: "zdravý", english: "healthy" },
-            { czech: "zvlášť", english: "separately" },
-            { czech: "čtvrtý", english: "fourth" },
-            { czech: "pořádek", english: "order" },
-            { czech: "jiný", english: "other" },
-            { czech: "vybrat", english: "choose" },
-            { czech: "alkohol", english: "alcohol" },
-            { czech: "čokoláda", english: "chocolate" },
-            { czech: "spolužačka", english: "classmate" },
-            { czech: "vegetarián", english: "vegetarian" },
-            { czech: "babička", english: "grandmother" },
-            { czech: "bohužel", english: "unfortunately" },
-            { czech: "dort", english: "cake" },
-            { czech: "dopis", english: "letter" },
-            { czech: "hoch", english: "boy" },
-            { czech: "mléko", english: "milk" },
-            { czech: "možná", english: "maybe" },
-            { czech: "nějaký", english: "somehow" },
-            { czech: "oblek", english: "suit" },
-            { czech: "pozvat", english: "invite" },
-            { czech: "sestra", english: "sister" },
-            { czech: "toaleta", english: "toilet" },
-            { czech: "známý", english: "known" },
-            { czech: "ach", english: "oh" },
-            { czech: "bratr", english: "brother" },
-            { czech: "deprese", english: "depression" },
-            { czech: "dneska", english: "today" },
-            { czech: "fakt", english: "fact" },
-            { czech: "hlad", english: "hunger" },
-            { czech: "hodně", english: "a lot" },
-            { czech: "krásný", english: "beautiful" },
-            { czech: "možnost", english: "possibility" },
-            { czech: "nálada", english: "mood" },
-            { czech: "nápad", english: "idea" },
-            { czech: "objednat", english: "order" },
-            { czech: "peníze", english: "money" },
-            { czech: "říkat", english: "say" },
-            { czech: "smát se", english: "laugh" },
-            { czech: "špatně", english: "badly" },
-            { czech: "štěstí", english: "happiness" },
-            { czech: "trochu", english: "little" },
-            { czech: "život", english: "life" },
-            { czech: "automechanik", english: "car mechanic" },
-            { czech: "byt", english: "apartment" },
-            { czech: "dítě", english: "child" },
-            { czech: "domácnost", english: "household" },
-            { czech: "fantastický", english: "fantastic" },
-            { czech: "manželka", english: "wife" },
-            { czech: "mladý", english: "young" },
-            { czech: "přátelé", english: "friends" },
-            { czech: "svobodný", english: "single" },
-            { czech: "ženatý", english: "married" },
-            { czech: "datum", english: "date" },
-            { czech: "let", english: "years" },
-            { czech: "narozen", english: "born" },
-            { czech: "rodina", english: "family" },
-            { czech: "rozvedený", english: "divorced" },
-            { czech: "stav", english: "status" },
-            { czech: "úřad", english: "office" },
-            { czech: "vdova", english: "widow" },
-            { czech: "vdovec", english: "widower" },
-            { czech: "bratranec", english: "cousin" },
-            { czech: "dcera", english: "daughter" },
-            { czech: "dětství", english: "childhood" },
-            { czech: "manželství", english: "marriage" },
-            { czech: "neteř", english: "niece" },
-            { czech: "rodič", english: "parent" },
-            { czech: "různý", english: "various" },
-            { czech: "synovec", english: "nephew" },
-            { czech: "teta", english: "aunt" },
-            { czech: "tchán", english: "father-in-law" },
-            { czech: "tchyně", english: "mother-in-law" },
-            { czech: "bohatý", english: "rich" },
-            { czech: "cizí", english: "foreign" },
-            { czech: "drahý", english: "expensive" },
-            { czech: "hubený", english: "thin, skinny" },
-            { czech: "chudý", english: "poor" },
-            { czech: "každý", english: "each, every" },
-            { czech: "konec", english: "end" },
-            { czech: "levný", english: "cheap" },
-            { czech: "nervózní", english: "nervous" },
-            { czech: "ošklivý", english: "ugly" },
-            { czech: "pasivní", english: "passive" },
-            { czech: "pesimistický", english: "pessimistic" },
-            { czech: "tlustý", english: "thick, fat" },
-            { czech: "povídat si", english: "talk, chat" },
-            { czech: "skupina", english: "group" },
-            { czech: "vesele", english: "cheerful" },
-            { czech: "cena", english: "price" },
-            { czech: "dolar", english: "dollar" },
-            { czech: "elektronika", english: "electronics" },
-            { czech: "euro", english: "euro" },
-            { czech: "počítač", english: "computer" },
-            { czech: "šedesát", english: "sixty" },
-            { czech: "čtvrt", english: "quarter" },
-            { czech: "deset", english: "ten" },
-            { czech: "hodina", english: "hour" },
-            { czech: "den", english: "day" },
-            { czech: "půl", english: "half" },
-            { czech: "slyšet", english: "hear" },
-            { czech: "týden", english: "week" },
-            { czech: "začít", english: "begin" },
-            { czech: "zapomenout", english: "forget" },
-            { czech: "akce", english: "event, action" },
-            { czech: "aktivita", english: "activity" },
-            { czech: "dopoledne", english: "morning" },
-            { czech: "noc", english: "night" },
-            { czech: "odpoledne", english: "afternoon" },
-            { czech: "párty", english: "party" },
-            { czech: "poledne", english: "noon" },
-            { czech: "příští", english: "next" },
-            { czech: "ráno", english: "morning" },
-            { czech: "schůze", english: "meeting" },
-            { czech: "tenis", english: "tennis" },
-            { czech: "večer", english: "evening" },
-            { czech: "zítra", english: "tomorrow" },
-            { czech: "dlouho", english: "for a long time" },
-            { czech: "hrát", english: "play, act" },
-            { czech: "hudba", english: "music" },
-            { czech: "nakupovat", english: "shop" },
-            { czech: "obědvat", english: "have lunch" },
-            { czech: "platit", english: "pay" },
-            { czech: "tanec", english: "dance" },
-            { czech: "uklízet", english: "clean up" },
-            { czech: "večeře", english: "dinner" },
-            { czech: "vstávat", english: "get up" },
-            { czech: "všední", english: "everyday" },
-            { czech: "brzy", english: "early, soon" },
-            { czech: "cvičit", english: "exercise, practice" },
-            { czech: "lékařka", english: "doctor" },
-            { czech: "jóga", english: "yoga" },
-            { czech: "karta", english: "card" },
-            { czech: "aerobik", english: "aerobics" },
-            { czech: "hlavně", english: "mainly" },
-            { czech: "internet", english: "internet" },
-            { czech: "odpovídat", english: "answer" },
-            { czech: "přednáška", english: "lecture" },
-            { czech: "společný", english: "common" },
-            { czech: "spolu", english: "together" },
-            { czech: "sportovat", english: "play sports" },
-            { czech: "svatba", english: "wedding" },
-            { czech: "teplý", english: "warm" },
-            { czech: "unavený", english: "tired" },
-            { czech: "denně", english: "daily" },
-            { czech: "chodit", english: "go, walk" },
-            { czech: "měsíc", english: "month" },
-            { czech: "narozeniny", english: "birthday" },
-            { czech: "neděle", english: "Sunday" },
-            { czech: "pátek", english: "Friday" },
-            { czech: "po", english: "after" },
-            { czech: "pondělí", english: "Monday" },
-            { czech: "pošta", english: "post office" },
-            { czech: "rezervace", english: "reservation" },
-            { czech: "školení", english: "training" },
-            { czech: "výročí", english: "anniversary" },
-            { czech: "zdraví", english: "health" }
-        ];
-
         const CzechFlashcardApp = () => {
             // All state variables
-            const [currentScreen, setCurrentScreen] = useState('home');
+            const [currentScreen, setCurrentScreen] = useState('login');
             const [currentCardIndex, setCurrentCardIndex] = useState(0);
             const [showAnswer, setShowAnswer] = useState(false);
             const [studyCards, setStudyCards] = useState([]);
@@ -196,28 +35,91 @@
             const [manualCzech, setManualCzech] = useState('');
             const [manualEnglish, setManualEnglish] = useState('');
             const [userId, setUserId] = useState('');
-            const [isLoading, setIsLoading] = useState(true);
+            const [isLoading, setIsLoading] = useState(false);
             const [isSyncing, setIsSyncing] = useState(false);
             const [lastSyncTime, setLastSyncTime] = useState(null);
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [isRegistering, setIsRegistering] = useState(false);
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [currentUser, setCurrentUser] = useState(null);
             const fileInputRef = useRef(null);
 
-            // Simple database simulation (replace with real API)
-            const generateUserId = () => {
-                let id = localStorage.getItem('czechFlashcardUserId');
-                if (!id) {
-                    id = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-                    localStorage.setItem('czechFlashcardUserId', id);
+            // User management functions
+            const hashPassword = (password) => {
+                let hash = 0;
+                for (let i = 0; i < password.length; i++) {
+                    const char = password.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
                 }
-                return id;
+                return hash.toString();
+            };
+
+            const registerUser = (username, password) => {
+                const users = JSON.parse(localStorage.getItem('czechApp_users') || '{}');
+                
+                if (users[username]) {
+                    alert('Username already exists! Please choose a different one.');
+                    return false;
+                }
+
+                const hashedPassword = hashPassword(password);
+                const newUser = {
+                    username: username,
+                    password: hashedPassword,
+                    createdAt: new Date().toISOString(),
+                    userId: 'user_' + username + '_' + Date.now()
+                };
+
+                users[username] = newUser;
+                localStorage.setItem('czechApp_users', JSON.stringify(users));
+                return true;
+            };
+
+            const loginUser = (username, password) => {
+                const users = JSON.parse(localStorage.getItem('czechApp_users') || '{}');
+                const user = users[username];
+
+                if (!user) {
+                    alert('User not found! Please register first.');
+                    return false;
+                }
+
+                const hashedPassword = hashPassword(password);
+                if (user.password !== hashedPassword) {
+                    alert('Incorrect password!');
+                    return false;
+                }
+
+                return user;
+            };
+
+            const loadUserVocabulary = async (userIdToLoad) => {
+                setIsLoading(true);
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const saved = localStorage.getItem(`czechVocab_${userIdToLoad}`);
+                    if (saved) {
+                        const userData = JSON.parse(saved);
+                        setAllVocabulary(userData.vocabulary || []);
+                        setLastSyncTime(new Date(userData.lastUpdated));
+                    } else {
+                        setAllVocabulary([]);
+                    }
+                } catch (error) {
+                    console.error('Error loading user vocabulary:', error);
+                    setAllVocabulary([]);
+                }
+                setIsLoading(false);
             };
 
             const saveToDatabase = async (vocabulary) => {
                 setIsSyncing(true);
                 try {
-                    // Simulate API call
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    // For now, use localStorage with user-specific key
                     const userData = {
                         userId: userId,
                         vocabulary: vocabulary,
@@ -226,62 +128,55 @@
                     
                     localStorage.setItem(`czechVocab_${userId}`, JSON.stringify(userData));
                     setLastSyncTime(new Date());
-                    console.log('Data saved successfully');
                 } catch (error) {
                     console.error('Error saving data:', error);
                 }
                 setIsSyncing(false);
             };
 
-            const loadFromDatabase = async () => {
-                setIsLoading(true);
-                try {
-                    // Simulate API call
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    const saved = localStorage.getItem(`czechVocab_${userId}`);
-                    if (saved) {
-                        const userData = JSON.parse(saved);
-                        setAllVocabulary(userData.vocabulary);
-                        setLastSyncTime(new Date(userData.lastUpdated));
-                    } else {
-                        setAllVocabulary(czechVocabulary);
-                    }
-                } catch (error) {
-                    console.error('Error loading data:', error);
-                    setAllVocabulary(czechVocabulary);
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                if (!username.trim() || !password.trim()) {
+                    alert('Please enter both username and password');
+                    return;
                 }
+
+                setIsLoading(true);
+
+                if (isRegistering) {
+                    const success = registerUser(username.trim(), password);
+                    if (success) {
+                        alert('Registration successful! Please log in.');
+                        setIsRegistering(false);
+                        setPassword('');
+                    }
+                } else {
+                    const user = loginUser(username.trim(), password);
+                    if (user) {
+                        setCurrentUser(user);
+                        setUserId(user.userId);
+                        setIsLoggedIn(true);
+                        setCurrentScreen('home');
+                        await loadUserVocabulary(user.userId);
+                    }
+                }
+
                 setIsLoading(false);
             };
 
-            const forceSync = async () => {
-                await saveToDatabase(allVocabulary);
+            const handleLogout = () => {
+                setIsLoggedIn(false);
+                setCurrentUser(null);
+                setUserId('');
+                setAllVocabulary([]);
+                setUsername('');
+                setPassword('');
+                setCurrentScreen('login');
+                setLastSyncTime(null);
+                localStorage.removeItem('czechApp_currentUser');
             };
 
-            // Initialize user and load data
-            useEffect(() => {
-                const id = generateUserId();
-                setUserId(id);
-            }, []);
-
-            useEffect(() => {
-                if (userId) {
-                    loadFromDatabase();
-                }
-            }, [userId]);
-
-            // Auto-save when vocabulary changes
-            useEffect(() => {
-                if (allVocabulary.length > 0 && !isLoading && userId) {
-                    const timeoutId = setTimeout(() => {
-                        saveToDatabase(allVocabulary);
-                    }, 2000);
-
-                    return () => clearTimeout(timeoutId);
-                }
-            }, [allVocabulary, isLoading, userId]);
-
-            // All function definitions (same as before)
+            // Study functions
             const shuffleCards = () => {
                 const shuffled = [...allVocabulary].sort(() => Math.random() - 0.5);
                 setStudyCards(shuffled);
@@ -313,14 +208,6 @@
                 }, 500);
             };
 
-            const resetSession = () => {
-                setCurrentCardIndex(0);
-                setShowAnswer(false);
-                setCorrectCount(0);
-                setIncorrectCount(0);
-                shuffleCards();
-            };
-
             const addManualCard = (czech, english) => {
                 if (!czech.trim() || !english.trim()) {
                     alert('Please fill in both Czech and English fields');
@@ -340,19 +227,283 @@
                 addManualCard(manualCzech, manualEnglish);
             };
 
+            const forceSync = async () => {
+                await saveToDatabase(allVocabulary);
+            };
+
+            // Image processing functions
+            const validateCzechWord = (word) => {
+                const cleanWord = word.toLowerCase().trim();
+                const czechChars = ['č', 'š', 'ž', 'ř', 'ď', 'ť', 'ň', 'ů', 'á', 'é', 'í', 'ó', 'ú', 'ý'];
+                const hasCzechChars = czechChars.some(char => cleanWord.includes(char));
+                return hasCzechChars || cleanWord.length >= 3;
+            };
+
+            const validateEnglishWord = (word) => {
+                const cleanWord = word.toLowerCase().trim();
+                const englishPattern = /^[a-z\s\-'\.]+$/i;
+                return englishPattern.test(cleanWord) && cleanWord.length >= 1;
+            };
+
+            const validateCardPair = (czech, english) => {
+                const czechValid = validateCzechWord(czech);
+                const englishValid = validateEnglishWord(english);
+                
+                return {
+                    isValid: czechValid && englishValid,
+                    czechValid,
+                    englishValid,
+                    issues: [
+                        ...(!czechValid ? ['Czech word might be incorrect'] : []),
+                        ...(!englishValid ? ['English word might be incorrect'] : [])
+                    ]
+                };
+            };
+
+            const parseExtractedText = (text) => {
+                const lines = text.split('\n').filter(line => line.trim());
+                const parsed = [];
+                const validationRes = [];
+
+                lines.forEach((line, index) => {
+                    const match = line.match(/^(.+?)\s*[-:→=]\s*(.+)$/);
+                    if (match && parsed.length < 200) {
+                        const czech = match[1].trim();
+                        const english = match[2].trim();
+                        
+                        if (czech && english) {
+                            const validation = validateCardPair(czech, english);
+                            parsed.push({ czech, english, id: index });
+                            validationRes.push(validation);
+                        }
+                    }
+                });
+
+                setNewCards(parsed);
+                setValidationResults(validationRes);
+                
+                if (parsed.length > 0) {
+                    setIsValidating(true);
+                    setTimeout(() => {
+                        setIsValidating(false);
+                    }, 1500);
+                }
+            };
+
+            const handleImageUpload = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                setIsProcessingImage(true);
+                setCurrentScreen('imageProcessing');
+
+                try {
+                    setTimeout(() => {
+                        const mockExtractedText = `nový - new
+starý - old
+rychlý - fast
+pomalý - slow
+velký - big
+malý - small
+dobrý - good
+špatný - bad
+studovat - study
+učit se - learn
+práce - work
+škola - school
+dům - house
+auto - car
+jídlo - food
+voda - water
+čas - time
+člověk - person
+místo - place
+věc - thing`;
+
+                        parseExtractedText(mockExtractedText);
+                        setIsProcessingImage(false);
+                    }, 2000);
+                } catch (error) {
+                    console.error('Error processing image:', error);
+                    setIsProcessingImage(false);
+                    alert('Error processing image. Please try again.');
+                }
+            };
+
+            const addNewCardsToVocabulary = () => {
+                const validCards = newCards.filter((card, index) => {
+                    const validation = validationResults[index];
+                    return !validation || validation.isValid || card.manuallyApproved;
+                });
+                
+                const updatedVocabulary = [...allVocabulary, ...validCards];
+                setAllVocabulary(updatedVocabulary);
+                setNewCards([]);
+                setValidationResults([]);
+                setCurrentScreen('home');
+                alert(`Added ${validCards.length} new cards to your vocabulary!`);
+            };
+
+            const approveCard = (index) => {
+                const updated = [...newCards];
+                updated[index].manuallyApproved = true;
+                setNewCards(updated);
+            };
+
+            const editCard = (index, field, value) => {
+                const updated = [...newCards];
+                updated[index][field] = value;
+                setNewCards(updated);
+            };
+
+            const removeCard = (index) => {
+                const updated = newCards.filter((_, i) => i !== index);
+                setNewCards(updated);
+            };
+
+            // Initialize app
+            useEffect(() => {
+                const createDemoUser = () => {
+                    const users = JSON.parse(localStorage.getItem('czechApp_users') || '{}');
+                    if (!users['demo']) {
+                        const demoUser = {
+                            username: 'demo',
+                            password: hashPassword('demo'),
+                            createdAt: new Date().toISOString(),
+                            userId: 'user_demo_1234567890'
+                        };
+                        users['demo'] = demoUser;
+                        localStorage.setItem('czechApp_users', JSON.stringify(users));
+                    }
+                };
+
+                createDemoUser();
+
+                const savedUser = localStorage.getItem('czechApp_currentUser');
+                if (savedUser) {
+                    const user = JSON.parse(savedUser);
+                    setCurrentUser(user);
+                    setUserId(user.userId);
+                    setUsername(user.username);
+                    setIsLoggedIn(true);
+                    setCurrentScreen('home');
+                    loadUserVocabulary(user.userId);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (currentUser) {
+                    localStorage.setItem('czechApp_currentUser', JSON.stringify(currentUser));
+                } else {
+                    localStorage.removeItem('czechApp_currentUser');
+                }
+            }, [currentUser]);
+
+            useEffect(() => {
+                if (allVocabulary.length >= 0 && !isLoading && userId && isLoggedIn) {
+                    const timeoutId = setTimeout(() => {
+                        saveToDatabase(allVocabulary);
+                    }, 2000);
+
+                    return () => clearTimeout(timeoutId);
+                }
+            }, [allVocabulary, isLoading, userId, isLoggedIn]);
+
             const currentCard = studyCards[currentCardIndex];
 
-            // Render loading screen
-            if (isLoading) {
+            // Login Screen
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4 flex items-center justify-center">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+                            <div className="text-center mb-8">
+                                <div className="text-6xl mb-4">🇨🇿</div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Czech Flashcards</h1>
+                                <p className="text-gray-600">
+                                    {isRegistering ? 'Create your account' : 'Sign in to your account'}
+                                </p>
+                            </div>
+
+                            <form onSubmit={handleLogin} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Username
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value)}
+                                        placeholder="Enter your username"
+                                        className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                                        required
+                                        minLength="3"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Password
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        placeholder="Enter your password"
+                                        className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                                        required
+                                        minLength="4"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                >
+                                    {isLoading ? 'Processing...' : (isRegistering ? 'Create Account' : 'Sign In')}
+                                </button>
+                            </form>
+
+                            <div className="mt-6 text-center">
+                                <button
+                                    onClick={() => {
+                                        setIsRegistering(!isRegistering);
+                                        setPassword('');
+                                    }}
+                                    className="text-blue-600 hover:text-blue-700 underline"
+                                >
+                                    {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
+                                </button>
+                            </div>
+
+                            <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                                <h3 className="font-semibold text-blue-800 mb-2">🌟 Features:</h3>
+                                <ul className="text-sm text-blue-700 space-y-1">
+                                    <li>• Personal vocabulary collection</li>
+                                    <li>• Add cards manually or from images</li>
+                                    <li>• Cross-device sync</li>
+                                    <li>• Smart Czech-English validation</li>
+                                </ul>
+                            </div>
+
+                            <div className="mt-6 text-center">
+                                <div className="text-xs text-gray-500">
+                                    Demo: username "demo", password "demo"
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Loading Screen
+            if (isLoading && currentScreen === 'home') {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4 flex items-center justify-center">
                         <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
                             <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
                             <h2 className="text-xl font-bold text-gray-800 mb-2">Loading Your Cards</h2>
                             <p className="text-gray-600">Syncing with database...</p>
-                            <div className="mt-4 text-sm text-gray-500">
-                                User ID: {userId.substring(0, 12)}...
-                            </div>
                         </div>
                     </div>
                 );
@@ -364,14 +515,27 @@
                     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
                         <div className="max-w-md mx-auto">
                             <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div className="text-left">
+                                        <div className="text-sm text-gray-500">Welcome back,</div>
+                                        <div className="font-semibold text-gray-800">{currentUser?.username}</div>
+                                    </div>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="text-sm text-red-600 hover:text-red-700 underline"
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+
                                 <div className="text-6xl mb-6">🇨🇿</div>
                                 <h1 className="text-3xl font-bold text-gray-800 mb-4">Czech Vocabulary</h1>
-                                <p className="text-gray-600 mb-8">Learn Czech with cloud-synced flashcards</p>
+                                <p className="text-gray-600 mb-8">Your personal flashcard collection</p>
                                 
                                 <div className="grid grid-cols-2 gap-6 mb-6">
                                     <div className="bg-blue-50 p-6 rounded-xl">
                                         <div className="text-3xl font-bold text-blue-600">{allVocabulary.length}</div>
-                                        <div className="text-sm text-gray-600">Total Cards</div>
+                                        <div className="text-sm text-gray-600">Your Cards</div>
                                     </div>
                                     <div className="bg-green-50 p-6 rounded-xl">
                                         <div className="text-3xl font-bold text-green-600">A1-A2</div>
@@ -379,7 +543,6 @@
                                     </div>
                                 </div>
 
-                                {/* Sync Status */}
                                 <div className="mb-6 p-3 bg-gray-50 rounded-lg">
                                     <div className="flex justify-between items-center">
                                         <div className="text-sm text-gray-600">
@@ -403,24 +566,32 @@
                                             Sync
                                         </button>
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-1">
-                                        Cross-device sync enabled
-                                    </div>
                                 </div>
 
-                                <button
-                                    onClick={startStudySession}
-                                    className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
-                                >
-                                    Start Study Session
-                                </button>
+                                {allVocabulary.length === 0 ? (
+                                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <div className="text-yellow-800 font-semibold mb-2">🚀 Get Started!</div>
+                                        <div className="text-sm text-yellow-700">
+                                            Your vocabulary is empty. Add your first cards using the buttons below!
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={startStudySession}
+                                        className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
+                                    >
+                                        Start Study Session
+                                    </button>
+                                )}
 
-                                <button
-                                    onClick={() => setCurrentScreen('browse')}
-                                    className="w-full bg-gray-200 text-gray-700 py-4 px-6 rounded-xl font-semibold text-lg hover:bg-gray-300 transition-colors mb-4"
-                                >
-                                    Browse All Cards
-                                </button>
+                                {allVocabulary.length > 0 && (
+                                    <button
+                                        onClick={() => setCurrentScreen('browse')}
+                                        className="w-full bg-gray-200 text-gray-700 py-4 px-6 rounded-xl font-semibold text-lg hover:bg-gray-300 transition-colors mb-4"
+                                    >
+                                        Browse All Cards ({allVocabulary.length})
+                                    </button>
+                                )}
 
                                 <button
                                     onClick={() => setCurrentScreen('manualAdd')}
@@ -429,18 +600,27 @@
                                     Add Card Manually
                                 </button>
 
-                                <div className="text-center">
-                                    <div className="text-xs text-gray-500 mt-4">
-                                        🌐 Your progress syncs across all devices
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
+                                >
+                                    Add Cards from Image
+                                </button>
+
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
                             </div>
                         </div>
                     </div>
                 );
             }
 
-            // Manual Add Screen (simplified)
+            // Manual Add Screen
             if (currentScreen === 'manualAdd') {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4">
@@ -557,7 +737,13 @@
                                     {currentCardIndex + 1} / {studyCards.length}
                                 </div>
                                 <button
-                                    onClick={resetSession}
+                                    onClick={() => {
+                                        setCurrentCardIndex(0);
+                                        setShowAnswer(false);
+                                        setCorrectCount(0);
+                                        setIncorrectCount(0);
+                                        shuffleCards();
+                                    }}
                                     className="p-3 text-white hover:bg-white hover:bg-opacity-20 rounded-full"
                                 >
                                     Reset
@@ -664,6 +850,202 @@
                                         className="bg-gray-200 text-gray-700 py-4 px-4 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
                                     >
                                         Back Home
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Image Processing Screen
+            if (currentScreen === 'imageProcessing') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                                <div className="text-6xl mb-6">📷</div>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-4">Processing Image</h2>
+                                
+                                {isProcessingImage ? (
+                                    <div>
+                                        <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent mx-auto mb-4"></div>
+                                        <p className="text-gray-600">Extracting text from your image...</p>
+                                        <p className="text-sm text-gray-500 mt-2">Supports up to 200 cards</p>
+                                    </div>
+                                ) : isValidating ? (
+                                    <div>
+                                        <div className="animate-pulse flex space-x-1 justify-center mb-4">
+                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                        </div>
+                                        <p className="text-gray-600">Validating Czech-English pairs...</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="text-4xl mb-4">✅</div>
+                                        <p className="text-gray-600 mb-6">Processing complete!</p>
+                                        
+                                        {newCards.length > 0 ? (
+                                            <div>
+                                                <p className="text-green-600 font-semibold mb-2">
+                                                    Found {newCards.length} vocabulary pairs
+                                                </p>
+                                                {validationResults.length > 0 && (
+                                                    <div className="mb-4">
+                                                        <p className="text-sm text-gray-600">
+                                                            ✅ Valid: {validationResults.filter(v => v.isValid).length} | 
+                                                            ⚠️ Needs review: {validationResults.filter(v => !v.isValid).length}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={() => setCurrentScreen('editCards')}
+                                                    className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-3"
+                                                >
+                                                    Review & Edit Cards
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-red-600 mb-4">No vocabulary pairs found. Please try a different image.</p>
+                                        )}
+                                        
+                                        <button
+                                            onClick={() => setCurrentScreen('home')}
+                                            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                        >
+                                            Back to Home
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Edit Cards Screen
+            if (currentScreen === 'editCards') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl">
+                                <div className="flex items-center justify-between p-6 border-b">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-xl font-semibold">Review New Cards ({newCards.length})</h2>
+                                    <div></div>
+                                </div>
+                                
+                                <div className="p-6">
+                                    <div className="max-h-96 overflow-y-auto mb-6">
+                                        {newCards.map((card, index) => {
+                                            const validation = validationResults[index];
+                                            const isValid = !validation || validation.isValid || card.manuallyApproved;
+                                            
+                                            return (
+                                                <div key={index} className={`p-4 rounded-lg mb-4 border-2 ${
+                                                    isValid ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
+                                                }`}>
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm text-gray-500 mr-2">Card {index + 1}</span>
+                                                            {isValid ? (
+                                                                <span className="text-green-600 text-sm">✅ Valid</span>
+                                                            ) : (
+                                                                <span className="text-yellow-600 text-sm">⚠️ Needs review</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            {!isValid && (
+                                                                <button
+                                                                    onClick={() => approveCard(index)}
+                                                                    className="text-green-600 hover:text-green-700 text-sm px-2 py-1 bg-green-100 rounded"
+                                                                >
+                                                                    Approve
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => removeCard(index)}
+                                                                className="text-red-500 hover:text-red-700 text-sm px-2 py-1 bg-red-100 rounded"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {validation && !validation.isValid && !card.manuallyApproved && (
+                                                        <div className="mb-3 p-2 bg-yellow-100 rounded text-sm">
+                                                            <strong>Issues detected:</strong>
+                                                            <ul className="list-disc list-inside text-yellow-700">
+                                                                {validation.issues.map((issue, i) => (
+                                                                    <li key={i}>{issue}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                Czech {!validation?.czechValid && !card.manuallyApproved && (
+                                                                    <span className="text-red-500">⚠️</span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={card.czech}
+                                                                onChange={(e) => editCard(index, 'czech', e.target.value)}
+                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                                            />
+                                                        </div>
+                                                        
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                English {!validation?.englishValid && !card.manuallyApproved && (
+                                                                    <span className="text-red-500">⚠️</span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={card.english}
+                                                                onChange={(e) => editCard(index, 'english', e.target.value)}
+                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    {newCards.length > 0 && (
+                                        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                                            <div className="text-sm text-blue-700">
+                                                <strong>Summary:</strong> {newCards.filter((_, i) => !validationResults[i] || validationResults[i].isValid || newCards[i].manuallyApproved).length} cards ready to add
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {newCards.length > 0 && (
+                                        <button
+                                            onClick={addNewCardsToVocabulary}
+                                            className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-3"
+                                        >
+                                            Add Valid Cards to Vocabulary
+                                        </button>
+                                    )}
+                                    
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                    >
+                                        Cancel
                                     </button>
                                 </div>
                             </div>
