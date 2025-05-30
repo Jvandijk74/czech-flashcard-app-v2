@@ -29,6 +29,7 @@
 
         const CzechFlashcardApp = () => {
             // All state variables
+            const [mode, setMode] = useState('srs'); // 'srs' (Spaced Repetition) or 'activeRecall'
             const [currentScreen, setCurrentScreen] = useState('login');
             const [currentCardIndex, setCurrentCardIndex] = useState(0);
             const [showAnswer, setShowAnswer] = useState(false);
@@ -285,7 +286,7 @@
             };
 
             const startStudySession = () => {
-    const today = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
 
     const dueCards = allVocabulary.filter(card => {
         const dueDate = card.nextReviewDate ? card.nextReviewDate.split('T')[0] : today;
@@ -303,7 +304,7 @@
     setShowAnswer(false);
     setCorrectCount(0);
     setIncorrectCount(0);
-    setCurrentScreen('study');
+    setCurrentScreen('study'); // 👈 mode is already in the state!
 };
 
             const handleAnswer = (isCorrect) => {
@@ -1034,7 +1035,21 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    <button
+                        <div className="flex gap-4 mb-6 justify-center">
+    <button
+        onClick={() => setMode('srs')}
+        className={`py-2 px-4 rounded-lg font-semibold ${mode === 'srs' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+    >
+        Flashcards (SRS)
+    </button>
+    <button
+        onClick={() => setMode('activeRecall')}
+        className={`py-2 px-4 rounded-lg font-semibold ${mode === 'activeRecall' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+    >
+        Active Recall
+    </button>
+</div>            
+                        <button
                                         onClick={startStudySession}
                                         className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
                                     >
@@ -1242,15 +1257,47 @@
                             </div>
 
                             <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6 min-h-64 flex flex-col justify-center items-center text-center">
-                                <div className="text-4xl font-bold text-red-600 mb-6">
-                                    {currentCard.czech}
-                                </div>
-                                
-                                {showAnswer && (
-                                    <div className="text-2xl text-green-600 border-t-2 border-gray-200 pt-6 mt-6 w-full">
-                                        {currentCard.english}
-                                    </div>
-                                )}
+                                {mode === 'srs' ? (
+    <>
+        <div className="text-4xl font-bold text-red-600 mb-6">
+            {currentCard.czech}
+        </div>
+
+        {showAnswer && (
+            <div className="text-2xl text-green-600 border-t-2 border-gray-200 pt-6 mt-6 w-full">
+                {currentCard.english}
+            </div>
+        )}
+
+        {!showAnswer ? (
+            <button
+                onClick={() => setShowAnswer(true)}
+                className="w-full bg-yellow-500 text-white py-4 px-6 rounded-xl font-bold text-xl hover:bg-yellow-600 transition-colors"
+            >
+                Show Answer
+            </button>
+        ) : (
+            <div className="grid grid-cols-2 gap-4">
+                <button
+                    onClick={() => handleAnswer(false)}
+                    className="bg-red-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-red-600 transition-colors"
+                >
+                    Wrong
+                </button>
+                <button
+                    onClick={() => handleAnswer(true)}
+                    className="bg-green-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+                >
+                    Correct
+                </button>
+            </div>
+        )}
+    </>
+) : (
+    // 🆕 ACTIVE RECALL MODE
+    <ActiveRecallCard />
+)}
+
                             </div>
 
                             {!showAnswer ? (
@@ -1726,7 +1773,46 @@
 
             return null;
         };
+// 📦 INSIDE CzechFlashcardApp
+const ActiveRecallCard = () => {
+    const [typedAnswer, setTypedAnswer] = useState('');
+    const currentCard = studyCards[currentCardIndex];
 
+    const checkAnswer = () => {
+        const normalizedInput = typedAnswer.trim().toLowerCase();
+        const normalizedAnswer = currentCard.czech.trim().toLowerCase();
+
+        const isCorrect = normalizedInput === normalizedAnswer;
+        handleAnswer(isCorrect);
+        setTypedAnswer(''); // reset input
+    };
+
+    return (
+        <>
+            <div className="text-2xl text-blue-700 mb-6">
+                Translate this word to Czech:
+            </div>
+            <div className="text-4xl font-bold text-green-600 mb-6">
+                {currentCard.english}
+            </div>
+
+            <input
+                type="text"
+                value={typedAnswer}
+                onChange={(e) => setTypedAnswer(e.target.value)}
+                placeholder="Type the Czech word..."
+                className="w-full p-4 border-2 border-gray-200 rounded-xl mb-6 text-lg"
+            />
+
+            <button
+                onClick={checkAnswer}
+                className="w-full bg-green-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+            >
+                Submit
+            </button>
+        </>
+    );
+};
         ReactDOM.render(<CzechFlashcardApp />, document.getElementById('root'));
     </script>
 </body>
