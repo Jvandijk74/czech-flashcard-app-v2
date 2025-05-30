@@ -545,43 +545,34 @@
             };
 
             const preprocessImage = (file) => {
-                return new Promise((resolve) => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const img = new Image();
-                    
-                    img.onload = () => {
-                        // Set canvas size
-                        canvas.width = img.naturalWidth;
-canvas.height = img.naturalHeight;
-                        
-                        // Draw image
-                        ctx.drawImage(img, 0, 0);
-                        
-                        // Get image data
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        const data = imageData.data;
-                        
-                        // Convert to grayscale and increase contrast
-                        for (let i = 0; i < data.length; i += 4) {
-                            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                            // Increase contrast
-                            const contrast = gray > 128 ? 255 : 0;
-                            data[i] = contrast;     // red
-                            data[i + 1] = contrast; // green
-                            data[i + 2] = contrast; // blue
-                        }
-                        
-                        // Put the modified image data back
-                        ctx.putImageData(imageData, 0, 0);
-                        
-                        // Convert to blob
-                        canvas.toBlob(resolve, 'image/png');
-                    };
-                    
-                    img.src = URL.createObjectURL(file);
-                });
-            };
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        img.onload = () => {
+            // Full original size
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+
+            // Increase "virtual" DPI (scale x2)
+            ctx.scale(2, 2); // Makes OCR sharper
+            ctx.imageSmoothingEnabled = false; // Important for OCR: no blur
+
+            // Optional: slight contrast and brightness adjustment
+            ctx.filter = 'contrast(150%) brightness(110%)'; // Increase contrast slightly
+
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+
+            // No aggressive thresholding - keep details!
+
+            // Output as Blob
+            canvas.toBlob(resolve, 'image/png');
+        };
+
+        img.src = URL.createObjectURL(file);
+    });
+};
 
             const handleImageUpload = async (event) => {
                 const file = event.target.files[0];
