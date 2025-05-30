@@ -285,88 +285,30 @@
             };
 
             const startStudySession = () => {
-    const today = new Date().toISOString().split('T')[0];
-
-    const dueCards = allVocabulary.filter(card => {
-        const dueDate = card.nextReviewDate ? card.nextReviewDate.split('T')[0] : today;
-        return dueDate <= today;
-    });
-
-    if (dueCards.length === 0) {
-        alert("No cards due today! ✅ Enjoy your free time!");
-        return;
-    }
-
-    const shuffled = [...dueCards].sort(() => Math.random() - 0.5);
-    setStudyCards(shuffled);
-    setCurrentCardIndex(0);
-    setShowAnswer(false);
-    setCorrectCount(0);
-    setIncorrectCount(0);
-    setCurrentScreen('study'); // 👈 mode is already in the state!
-};
+                shuffleCards();
+                setCurrentCardIndex(0);
+                setShowAnswer(false);
+                setCorrectCount(0);
+                setIncorrectCount(0);
+                setCurrentScreen('study');
+            };
 
             const handleAnswer = (isCorrect) => {
-    const today = new Date();
-    const updatedStudyCards = [...studyCards];
-    const currentCard = updatedStudyCards[currentCardIndex];
+                if (isCorrect) {
+                    setCorrectCount(prev => prev + 1);
+                } else {
+                    setIncorrectCount(prev => prev + 1);
+                }
 
-    if (isCorrect) {
-        setCorrectCount(prev => prev + 1);
-
-        // Increase correct streak
-        currentCard.correctInARow = (currentCard.correctInARow || 0) + 1;
-
-        // Calculate next review date
-        let daysUntilNext;
-        if (currentCard.correctInARow === 1) {
-            daysUntilNext = 1; // 1 day later
-        } else if (currentCard.correctInARow === 2) {
-            daysUntilNext = 3; // 3 days later
-        } else if (currentCard.correctInARow === 3) {
-            daysUntilNext = 7; // 1 week
-        } else {
-            daysUntilNext = 15; // 2+ weeks for well-known cards
-        }
-
-        const nextReviewDate = new Date();
-        nextReviewDate.setDate(today.getDate() + daysUntilNext);
-        currentCard.nextReviewDate = nextReviewDate.toISOString();
-    } else {
-        setIncorrectCount(prev => prev + 1);
-
-        // Reset correct streak
-        currentCard.correctInARow = 0;
-
-        // Schedule next review for tomorrow
-        const nextReviewDate = new Date();
-        nextReviewDate.setDate(today.getDate() + 1);
-        currentCard.nextReviewDate = nextReviewDate.toISOString();
-    }
-
-    // Update studyCards list
-    updatedStudyCards[currentCardIndex] = currentCard;
-    setStudyCards(updatedStudyCards);
-
-    // Update full vocabulary
-    const updatedVocabulary = allVocabulary.map(card => {
-        if (card.czech === currentCard.czech && card.english === currentCard.english) {
-            return currentCard;
-        }
-        return card;
-    });
-    setAllVocabulary(updatedVocabulary);
-
-    // Move to next card
-    setTimeout(() => {
-        if (currentCardIndex < updatedStudyCards.length - 1) {
-            setCurrentCardIndex(prev => prev + 1);
-            setShowAnswer(false);
-        } else {
-            setCurrentScreen('results');
-        }
-    }, 500);
-};
+                setTimeout(() => {
+                    if (currentCardIndex < studyCards.length - 1) {
+                        setCurrentCardIndex(prev => prev + 1);
+                        setShowAnswer(false);
+                    } else {
+                        setCurrentScreen('results');
+                    }
+                }, 500);
+            };
 
             const addManualCard = (czech, english) => {
                 if (!czech.trim() || !english.trim()) {
@@ -1034,21 +976,7 @@
                                         </div>
                                     </div>
                                 ) : (
-                        <div className="flex gap-4 mb-6 justify-center">
-    <button
-        onClick={() => setMode('srs')}
-        className={`py-2 px-4 rounded-lg font-semibold ${mode === 'srs' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-    >
-        Flashcards (SRS)
-    </button>
-    <button
-        onClick={() => setMode('activeRecall')}
-        className={`py-2 px-4 rounded-lg font-semibold ${mode === 'activeRecall' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-    >
-        Active Recall
-    </button>
-</div>            
-                        <button
+                                    <button
                                         onClick={startStudySession}
                                         className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
                                     >
@@ -1256,47 +1184,15 @@
                             </div>
 
                             <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6 min-h-64 flex flex-col justify-center items-center text-center">
-                                {mode === 'srs' ? (
-    <>
-        <div className="text-4xl font-bold text-red-600 mb-6">
-            {currentCard.czech}
-        </div>
-
-        {showAnswer && (
-            <div className="text-2xl text-green-600 border-t-2 border-gray-200 pt-6 mt-6 w-full">
-                {currentCard.english}
-            </div>
-        )}
-
-        {!showAnswer ? (
-            <button
-                onClick={() => setShowAnswer(true)}
-                className="w-full bg-yellow-500 text-white py-4 px-6 rounded-xl font-bold text-xl hover:bg-yellow-600 transition-colors"
-            >
-                Show Answer
-            </button>
-        ) : (
-            <div className="grid grid-cols-2 gap-4">
-                <button
-                    onClick={() => handleAnswer(false)}
-                    className="bg-red-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-red-600 transition-colors"
-                >
-                    Wrong
-                </button>
-                <button
-                    onClick={() => handleAnswer(true)}
-                    className="bg-green-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
-                >
-                    Correct
-                </button>
-            </div>
-        )}
-    </>
-) : (
-    // 🆕 ACTIVE RECALL MODE
-    <ActiveRecallCard />
-)}
-
+                                <div className="text-4xl font-bold text-red-600 mb-6">
+                                    {currentCard.czech}
+                                </div>
+                                
+                                {showAnswer && (
+                                    <div className="text-2xl text-green-600 border-t-2 border-gray-200 pt-6 mt-6 w-full">
+                                        {currentCard.english}
+                                    </div>
+                                )}
                             </div>
 
                             {!showAnswer ? (
@@ -1772,6 +1668,7 @@
 
             return null;
         };
+
         ReactDOM.render(<CzechFlashcardApp />, document.getElementById('root'));
     </script>
 </body>
