@@ -311,24 +311,62 @@
             };
 
             const parseExtractedText = (text) => {
+                console.log('Parsing text:', text);
+                
                 const lines = text.split('\n').filter(line => line.trim());
                 const parsed = [];
                 const validationRes = [];
 
                 lines.forEach((line, index) => {
-                    const match = line.match(/^(.+?)\s*[-:→=]\s*(.+)$/);
+                    // Clean up the line
+                    const cleanLine = line.trim().replace(/[""]/g, '"').replace(/['']/g, "'");
+                    
+                    // Try multiple patterns for Czech-English pairs
+                    const patterns = [
+                        /^(.+?)\s*[-–—]\s*(.+)$/,           // dash variants
+                        /^(.+?)\s*[:]\s*(.+)$/,             // colon
+                        /^(.+?)\s*[→➜]\s*(.+)$/,           // arrows
+                        /^(.+?)\s*[=]\s*(.+)$/,             // equals
+                        /^(.+?)\s*[|]\s*(.+)$/,             // pipe
+                        /^(.+?)\s+([A-Za-z].*)$/,           // space separated (if second part starts with letter)
+                        /^(.+?)\s*[,]\s*(.+)$/,             // comma
+                        /^(.+?)\s*[;]\s*(.+)$/,             // semicolon
+                    ];
+                    
+                    let match = null;
+                    for (const pattern of patterns) {
+                        match = cleanLine.match(pattern);
+                        if (match) break;
+                    }
+                    
                     if (match && parsed.length < 200) {
-                        const czech = match[1].trim();
-                        const english = match[2].trim();
+                        let czech = match[1].trim();
+                        let english = match[2].trim();
                         
-                        if (czech && english) {
+                        // Clean up common OCR artifacts
+                        czech = czech.replace(/[|]/g, 'l').replace(/[0]/g, 'o').replace(/[5]/g, 's');
+                        english = english.replace(/[|]/g, 'l').replace(/[0]/g, 'o').replace(/[5]/g, 's');
+                        
+                        // Remove quotes if they wrap the entire string
+                        czech = czech.replace(/^["'](.*)["']$/, '$1');
+                        english = english.replace(/^["'](.*)["']$/, '$1');
+                        
+                        // Skip if either part is too short or contains mostly numbers/symbols
+                        if (czech.length >= 2 && english.length >= 2 && 
+                            !/^\d+$/.test(czech) && !/^\d+$/.test(english) &&
+                            !/^[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]+$/.test(czech) &&
+                            !/^[^a-zA-Z]+$/.test(english)) {
+                            
                             const validation = validateCardPair(czech, english);
                             parsed.push({ czech, english, id: index });
                             validationRes.push(validation);
+                            
+                            console.log(`Found pair: "${czech}" - "${english}"`);
                         }
                     }
                 });
 
+                console.log(`Parsed ${parsed.length} pairs`);
                 setNewCards(parsed);
                 setValidationResults(validationRes);
                 
@@ -337,7 +375,49 @@
                     setTimeout(() => {
                         setIsValidating(false);
                     }, 1500);
+                } else {
+                    // If no pairs found, show the raw text to user for manual input
+                    alert(`No vocabulary pairs detected. Raw text extracted:\n\n${text}\n\nYou can add cards manually instead.`);
                 }
+            };
+
+            const preprocessImage = (file) => {
+                return new Promise((resolve) => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        // Set canvas size
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        
+                        // Draw image
+                        ctx.drawImage(img, 0, 0);
+                        
+                        // Get image data
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const data = imageData.data;
+                        
+                        // Convert to grayscale and increase contrast
+                        for (let i = 0; i < data.length; i += 4) {
+                            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                            // Increase contrast
+                            const contrast = gray > 128 ? 255 : 0;
+                            data[i] = contrast;     // red
+                            data[i + 1] = contrast; // green
+                            data[i + 2] = contrast; // blue
+                        }
+                        
+                        // Put the modified image data back
+                        ctx.putImageData(imageData, 0, 0);
+                        
+                        // Convert to blob
+                        canvas.toBlob(resolve, 'image/png');
+                    };
+                    
+                    img.src = URL.createObjectURL(file);
+                });
             };
 
             const handleImageUpload = async (event) => {
@@ -348,16 +428,37 @@
                 setCurrentScreen('imageProcessing');
 
                 try {
-                    // Real OCR using Tesseract.js
+                    console.log('Starting OCR process...');
+                    
                     if (window.Tesseract) {
-                        const { data: { text } } = await window.Tesseract.recognize(file, 'ces+eng', {
-                            logger: m => console.log(m)
+                        // Preprocess the image for better OCR
+                        const processedImage = await preprocessImage(file);
+                        
+                        // Enhanced OCR configuration
+                        const { data: { text } } = await window.Tesseract.recognize(processedImage, 'ces+eng', {
+                            logger: m => {
+                                console.log(m);
+                                if (m.status === 'recognizing text') {
+                                    // You could add a progress bar here
+                                }
+                            },
+                            tessedit_pageseg_mode: '6', // Assume uniform block of text
+                            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789 -:→=.,!?()[]{}/"\'',
+                            preserve_interword_spaces: '1',
                         });
+                        
+                        console.log('OCR Result:', text);
                         
                         if (text.trim()) {
                             parseExtractedText(text);
                         } else {
-                            alert('No text found in the image. Please try a different image with clear text.');
+                            // Fallback: Ask user to manually enter text
+                            const userText = prompt(`OCR couldn't extract clear text. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
+                            if (userText) {
+                                parseExtractedText(userText);
+                            } else {
+                                setCurrentScreen('home');
+                            }
                         }
                     } else {
                         // Fallback: Ask user to manually enter text they see in the image
@@ -370,8 +471,15 @@
                     }
                 } catch (error) {
                     console.error('Error processing image:', error);
-                    alert('Error processing image. Please try again or enter text manually.');
-                    setCurrentScreen('home');
+                    
+                    // Fallback: Ask user to manually enter text
+                    const userText = prompt(`Error processing image. Please manually enter the Czech-English pairs you see (format: "czech - english", one per line):`);
+                    if (userText) {
+                        parseExtractedText(userText);
+                    } else {
+                        alert('Error processing image. Please try again with a clearer image.');
+                        setCurrentScreen('home');
+                    }
                 }
                 
                 setIsProcessingImage(false);
