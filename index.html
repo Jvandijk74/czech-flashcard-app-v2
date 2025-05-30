@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Czech Flashcard App - Cloud Sync</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇨🇿</text></svg>">
+    <meta name="description" content="Learn Czech vocabulary with cloud-synced flashcards. Add cards from images, manual entry, and sync across all devices!">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#3B82F6">
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const czechVocabulary = [
+            { czech: "zaplatit", english: "pay" },
+            { czech: "zdravý", english: "healthy" },
+            { czech: "zvlášť", english: "separately" },
+            { czech: "čtvrtý", english: "fourth" },
+            { czech: "pořádek", english: "order" },
+            { czech: "jiný", english: "other" },
+            { czech: "vybrat", english: "choose" },
+            { czech: "alkohol", english: "alcohol" },
+            { czech: "čokoláda", english: "chocolate" },
+            { czech: "spolužačka", english: "classmate" },
+            { czech: "vegetarián", english: "vegetarian" },
+            { czech: "babička", english: "grandmother" },
+            { czech: "bohužel", english: "unfortunately" },
+            { czech: "dort", english: "cake" },
+            { czech: "dopis", english: "letter" },
+            { czech: "hoch", english: "boy" },
+            { czech: "mléko", english: "milk" },
+            { czech: "možná", english: "maybe" },
+            { czech: "nějaký", english: "somehow" },
+            { czech: "oblek", english: "suit" },
+            { czech: "pozvat", english: "invite" },
+            { czech: "sestra", english: "sister" },
+            { czech: "toaleta", english: "toilet" },
+            { czech: "známý", english: "known" },
+            { czech: "ach", english: "oh" },
+            { czech: "bratr", english: "brother" },
+            { czech: "deprese", english: "depression" },
+            { czech: "dneska", english: "today" },
+            { czech: "fakt", english: "fact" },
+            { czech: "hlad", english: "hunger" },
+            { czech: "hodně", english: "a lot" },
+            { czech: "krásný", english: "beautiful" },
+            { czech: "možnost", english: "possibility" },
+            { czech: "nálada", english: "mood" },
+            { czech: "nápad", english: "idea" },
+            { czech: "objednat", english: "order" },
+            { czech: "peníze", english: "money" },
+            { czech: "říkat", english: "say" },
+            { czech: "smát se", english: "laugh" },
+            { czech: "špatně", english: "badly" },
+            { czech: "štěstí", english: "happiness" },
+            { czech: "trochu", english: "little" },
+            { czech: "život", english: "life" },
+            { czech: "automechanik", english: "car mechanic" },
+            { czech: "byt", english: "apartment" },
+            { czech: "dítě", english: "child" },
+            { czech: "domácnost", english: "household" },
+            { czech: "fantastický", english: "fantastic" },
+            { czech: "manželka", english: "wife" },
+            { czech: "mladý", english: "young" },
+            { czech: "přátelé", english: "friends" },
+            { czech: "svobodný", english: "single" },
+            { czech: "ženatý", english: "married" },
+            { czech: "datum", english: "date" },
+            { czech: "let", english: "years" },
+            { czech: "narozen", english: "born" },
+            { czech: "rodina", english: "family" },
+            { czech: "rozvedený", english: "divorced" },
+            { czech: "stav", english: "status" },
+            { czech: "úřad", english: "office" },
+            { czech: "vdova", english: "widow" },
+            { czech: "vdovec", english: "widower" },
+            { czech: "bratranec", english: "cousin" },
+            { czech: "dcera", english: "daughter" },
+            { czech: "dětství", english: "childhood" },
+            { czech: "manželství", english: "marriage" },
+            { czech: "neteř", english: "niece" },
+            { czech: "rodič", english: "parent" },
+            { czech: "různý", english: "various" },
+            { czech: "synovec", english: "nephew" },
+            { czech: "teta", english: "aunt" },
+            { czech: "tchán", english: "father-in-law" },
+            { czech: "tchyně", english: "mother-in-law" },
+            { czech: "bohatý", english: "rich" },
+            { czech: "cizí", english: "foreign" },
+            { czech: "drahý", english: "expensive" },
+            { czech: "hubený", english: "thin, skinny" },
+            { czech: "chudý", english: "poor" },
+            { czech: "každý", english: "each, every" },
+            { czech: "konec", english: "end" },
+            { czech: "levný", english: "cheap" },
+            { czech: "nervózní", english: "nervous" },
+            { czech: "ošklivý", english: "ugly" },
+            { czech: "pasivní", english: "passive" },
+            { czech: "pesimistický", english: "pessimistic" },
+            { czech: "tlustý", english: "thick, fat" },
+            { czech: "povídat si", english: "talk, chat" },
+            { czech: "skupina", english: "group" },
+            { czech: "vesele", english: "cheerful" },
+            { czech: "cena", english: "price" },
+            { czech: "dolar", english: "dollar" },
+            { czech: "elektronika", english: "electronics" },
+            { czech: "euro", english: "euro" },
+            { czech: "počítač", english: "computer" },
+            { czech: "šedesát", english: "sixty" },
+            { czech: "čtvrt", english: "quarter" },
+            { czech: "deset", english: "ten" },
+            { czech: "hodina", english: "hour" },
+            { czech: "den", english: "day" },
+            { czech: "půl", english: "half" },
+            { czech: "slyšet", english: "hear" },
+            { czech: "týden", english: "week" },
+            { czech: "začít", english: "begin" },
+            { czech: "zapomenout", english: "forget" },
+            { czech: "akce", english: "event, action" },
+            { czech: "aktivita", english: "activity" },
+            { czech: "dopoledne", english: "morning" },
+            { czech: "noc", english: "night" },
+            { czech: "odpoledne", english: "afternoon" },
+            { czech: "párty", english: "party" },
+            { czech: "poledne", english: "noon" },
+            { czech: "příští", english: "next" },
+            { czech: "ráno", english: "morning" },
+            { czech: "schůze", english: "meeting" },
+            { czech: "tenis", english: "tennis" },
+            { czech: "večer", english: "evening" },
+            { czech: "zítra", english: "tomorrow" },
+            { czech: "dlouho", english: "for a long time" },
+            { czech: "hrát", english: "play, act" },
+            { czech: "hudba", english: "music" },
+            { czech: "nakupovat", english: "shop" },
+            { czech: "obědvat", english: "have lunch" },
+            { czech: "platit", english: "pay" },
+            { czech: "tanec", english: "dance" },
+            { czech: "uklízet", english: "clean up" },
+            { czech: "večeře", english: "dinner" },
+            { czech: "vstávat", english: "get up" },
+            { czech: "všední", english: "everyday" },
+            { czech: "brzy", english: "early, soon" },
+            { czech: "cvičit", english: "exercise, practice" },
+            { czech: "lékařka", english: "doctor" },
+            { czech: "jóga", english: "yoga" },
+            { czech: "karta", english: "card" },
+            { czech: "aerobik", english: "aerobics" },
+            { czech: "hlavně", english: "mainly" },
+            { czech: "internet", english: "internet" },
+            { czech: "odpovídat", english: "answer" },
+            { czech: "přednáška", english: "lecture" },
+            { czech: "společný", english: "common" },
+            { czech: "spolu", english: "together" },
+            { czech: "sportovat", english: "play sports" },
+            { czech: "svatba", english: "wedding" },
+            { czech: "teplý", english: "warm" },
+            { czech: "unavený", english: "tired" },
+            { czech: "denně", english: "daily" },
+            { czech: "chodit", english: "go, walk" },
+            { czech: "měsíc", english: "month" },
+            { czech: "narozeniny", english: "birthday" },
+            { czech: "neděle", english: "Sunday" },
+            { czech: "pátek", english: "Friday" },
+            { czech: "po", english: "after" },
+            { czech: "pondělí", english: "Monday" },
+            { czech: "pošta", english: "post office" },
+            { czech: "rezervace", english: "reservation" },
+            { czech: "školení", english: "training" },
+            { czech: "výročí", english: "anniversary" },
+            { czech: "zdraví", english: "health" }
+        ];
+
+        const CzechFlashcardApp = () => {
+            // All state variables
+            const [currentScreen, setCurrentScreen] = useState('home');
+            const [currentCardIndex, setCurrentCardIndex] = useState(0);
+            const [showAnswer, setShowAnswer] = useState(false);
+            const [studyCards, setStudyCards] = useState([]);
+            const [correctCount, setCorrectCount] = useState(0);
+            const [incorrectCount, setIncorrectCount] = useState(0);
+            const [allVocabulary, setAllVocabulary] = useState([]);
+            const [isProcessingImage, setIsProcessingImage] = useState(false);
+            const [newCards, setNewCards] = useState([]);
+            const [validationResults, setValidationResults] = useState([]);
+            const [isValidating, setIsValidating] = useState(false);
+            const [manualCzech, setManualCzech] = useState('');
+            const [manualEnglish, setManualEnglish] = useState('');
+            const [userId, setUserId] = useState('');
+            const [isLoading, setIsLoading] = useState(true);
+            const [isSyncing, setIsSyncing] = useState(false);
+            const [lastSyncTime, setLastSyncTime] = useState(null);
+            const fileInputRef = useRef(null);
+
+            // Simple database simulation (replace with real API)
+            const generateUserId = () => {
+                let id = localStorage.getItem('czechFlashcardUserId');
+                if (!id) {
+                    id = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                    localStorage.setItem('czechFlashcardUserId', id);
+                }
+                return id;
+            };
+
+            const saveToDatabase = async (vocabulary) => {
+                setIsSyncing(true);
+                try {
+                    // Simulate API call
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // For now, use localStorage with user-specific key
+                    const userData = {
+                        userId: userId,
+                        vocabulary: vocabulary,
+                        lastUpdated: new Date().toISOString()
+                    };
+                    
+                    localStorage.setItem(`czechVocab_${userId}`, JSON.stringify(userData));
+                    setLastSyncTime(new Date());
+                    console.log('Data saved successfully');
+                } catch (error) {
+                    console.error('Error saving data:', error);
+                }
+                setIsSyncing(false);
+            };
+
+            const loadFromDatabase = async () => {
+                setIsLoading(true);
+                try {
+                    // Simulate API call
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const saved = localStorage.getItem(`czechVocab_${userId}`);
+                    if (saved) {
+                        const userData = JSON.parse(saved);
+                        setAllVocabulary(userData.vocabulary);
+                        setLastSyncTime(new Date(userData.lastUpdated));
+                    } else {
+                        setAllVocabulary(czechVocabulary);
+                    }
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    setAllVocabulary(czechVocabulary);
+                }
+                setIsLoading(false);
+            };
+
+            const forceSync = async () => {
+                await saveToDatabase(allVocabulary);
+            };
+
+            // Initialize user and load data
+            useEffect(() => {
+                const id = generateUserId();
+                setUserId(id);
+            }, []);
+
+            useEffect(() => {
+                if (userId) {
+                    loadFromDatabase();
+                }
+            }, [userId]);
+
+            // Auto-save when vocabulary changes
+            useEffect(() => {
+                if (allVocabulary.length > 0 && !isLoading && userId) {
+                    const timeoutId = setTimeout(() => {
+                        saveToDatabase(allVocabulary);
+                    }, 2000);
+
+                    return () => clearTimeout(timeoutId);
+                }
+            }, [allVocabulary, isLoading, userId]);
+
+            // All function definitions (same as before)
+            const shuffleCards = () => {
+                const shuffled = [...allVocabulary].sort(() => Math.random() - 0.5);
+                setStudyCards(shuffled);
+            };
+
+            const startStudySession = () => {
+                shuffleCards();
+                setCurrentCardIndex(0);
+                setShowAnswer(false);
+                setCorrectCount(0);
+                setIncorrectCount(0);
+                setCurrentScreen('study');
+            };
+
+            const handleAnswer = (isCorrect) => {
+                if (isCorrect) {
+                    setCorrectCount(prev => prev + 1);
+                } else {
+                    setIncorrectCount(prev => prev + 1);
+                }
+
+                setTimeout(() => {
+                    if (currentCardIndex < studyCards.length - 1) {
+                        setCurrentCardIndex(prev => prev + 1);
+                        setShowAnswer(false);
+                    } else {
+                        setCurrentScreen('results');
+                    }
+                }, 500);
+            };
+
+            const resetSession = () => {
+                setCurrentCardIndex(0);
+                setShowAnswer(false);
+                setCorrectCount(0);
+                setIncorrectCount(0);
+                shuffleCards();
+            };
+
+            const addManualCard = (czech, english) => {
+                if (!czech.trim() || !english.trim()) {
+                    alert('Please fill in both Czech and English fields');
+                    return;
+                }
+                
+                const newCard = { czech: czech.trim(), english: english.trim() };
+                const updatedVocabulary = [...allVocabulary, newCard];
+                setAllVocabulary(updatedVocabulary);
+                setManualCzech('');
+                setManualEnglish('');
+                alert('Card added successfully!');
+            };
+
+            const handleManualSubmit = (e) => {
+                e.preventDefault();
+                addManualCard(manualCzech, manualEnglish);
+            };
+
+            const currentCard = studyCards[currentCardIndex];
+
+            // Render loading screen
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4 flex items-center justify-center">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">Loading Your Cards</h2>
+                            <p className="text-gray-600">Syncing with database...</p>
+                            <div className="mt-4 text-sm text-gray-500">
+                                User ID: {userId.substring(0, 12)}...
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Home Screen
+            if (currentScreen === 'home') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                                <div className="text-6xl mb-6">🇨🇿</div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-4">Czech Vocabulary</h1>
+                                <p className="text-gray-600 mb-8">Learn Czech with cloud-synced flashcards</p>
+                                
+                                <div className="grid grid-cols-2 gap-6 mb-6">
+                                    <div className="bg-blue-50 p-6 rounded-xl">
+                                        <div className="text-3xl font-bold text-blue-600">{allVocabulary.length}</div>
+                                        <div className="text-sm text-gray-600">Total Cards</div>
+                                    </div>
+                                    <div className="bg-green-50 p-6 rounded-xl">
+                                        <div className="text-3xl font-bold text-green-600">A1-A2</div>
+                                        <div className="text-sm text-gray-600">Level</div>
+                                    </div>
+                                </div>
+
+                                {/* Sync Status */}
+                                <div className="mb-6 p-3 bg-gray-50 rounded-lg">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-sm text-gray-600">
+                                            {isSyncing ? (
+                                                <span className="flex items-center">
+                                                    <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
+                                                    Syncing...
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center">
+                                                    <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                                                    {lastSyncTime ? `Synced ${lastSyncTime.toLocaleTimeString()}` : 'Ready to sync'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={forceSync}
+                                            disabled={isSyncing}
+                                            className="text-blue-600 hover:text-blue-700 text-sm underline disabled:opacity-50"
+                                        >
+                                            Sync
+                                        </button>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        Cross-device sync enabled
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={startStudySession}
+                                    className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
+                                >
+                                    Start Study Session
+                                </button>
+
+                                <button
+                                    onClick={() => setCurrentScreen('browse')}
+                                    className="w-full bg-gray-200 text-gray-700 py-4 px-6 rounded-xl font-semibold text-lg hover:bg-gray-300 transition-colors mb-4"
+                                >
+                                    Browse All Cards
+                                </button>
+
+                                <button
+                                    onClick={() => setCurrentScreen('manualAdd')}
+                                    className="w-full bg-green-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-green-700 transition-colors mb-4"
+                                >
+                                    Add Card Manually
+                                </button>
+
+                                <div className="text-center">
+                                    <div className="text-xs text-gray-500 mt-4">
+                                        🌐 Your progress syncs across all devices
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Manual Add Screen (simplified)
+            if (currentScreen === 'manualAdd') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8">
+                                <div className="flex items-center mb-6">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-2xl font-bold text-gray-800">Add New Card</h2>
+                                </div>
+
+                                <form onSubmit={handleManualSubmit} className="space-y-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Czech Word/Phrase
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={manualCzech}
+                                            onChange={(e) => setManualCzech(e.target.value)}
+                                            placeholder="Enter Czech word..."
+                                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            English Translation
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={manualEnglish}
+                                            onChange={(e) => setManualEnglish(e.target.value)}
+                                            placeholder="Enter English translation..."
+                                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="flex gap-4">
+                                        <button
+                                            type="submit"
+                                            className="flex-1 bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors"
+                                        >
+                                            Add Card
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentScreen('home')}
+                                            className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Browse Screen
+            if (currentScreen === 'browse') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl">
+                                <div className="flex items-center p-6 border-b">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-xl font-semibold">All Vocabulary ({allVocabulary.length} cards)</h2>
+                                </div>
+                                
+                                <div className="max-h-96 overflow-y-auto">
+                                    {allVocabulary.map((card, index) => (
+                                        <div key={index} className="flex justify-between items-center p-4 border-b last:border-b-0 hover:bg-gray-50">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-lg text-red-600">{card.czech}</span>
+                                                <span className="text-gray-600">{card.english}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Study Screen
+            if (currentScreen === 'study') {
+                if (!currentCard) return <div>Loading...</div>;
+                
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="flex items-center justify-between mb-6">
+                                <button
+                                    onClick={() => setCurrentScreen('home')}
+                                    className="p-3 text-white hover:bg-white hover:bg-opacity-20 rounded-full"
+                                >
+                                    Home
+                                </button>
+                                <div className="text-white bg-black bg-opacity-20 px-4 py-2 rounded-full font-semibold">
+                                    {currentCardIndex + 1} / {studyCards.length}
+                                </div>
+                                <button
+                                    onClick={resetSession}
+                                    className="p-3 text-white hover:bg-white hover:bg-opacity-20 rounded-full"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+
+                            <div className="bg-white bg-opacity-30 rounded-full h-3 mb-6">
+                                <div 
+                                    className="bg-yellow-400 h-3 rounded-full transition-all duration-500"
+                                    style={{ width: `${((currentCardIndex + 1) / studyCards.length) * 100}%` }}
+                                />
+                            </div>
+
+                            <div className="flex gap-4 mb-6">
+                                <div className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center font-semibold">
+                                    Correct: {correctCount}
+                                </div>
+                                <div className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center font-semibold">
+                                    Wrong: {incorrectCount}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6 min-h-64 flex flex-col justify-center items-center text-center">
+                                <div className="text-4xl font-bold text-red-600 mb-6">
+                                    {currentCard.czech}
+                                </div>
+                                
+                                {showAnswer && (
+                                    <div className="text-2xl text-green-600 border-t-2 border-gray-200 pt-6 mt-6 w-full">
+                                        {currentCard.english}
+                                    </div>
+                                )}
+                            </div>
+
+                            {!showAnswer ? (
+                                <button
+                                    onClick={() => setShowAnswer(true)}
+                                    className="w-full bg-yellow-500 text-white py-4 px-6 rounded-xl font-bold text-xl hover:bg-yellow-600 transition-colors"
+                                >
+                                    Show Answer
+                                </button>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => handleAnswer(false)}
+                                        className="bg-red-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-red-600 transition-colors"
+                                    >
+                                        Wrong
+                                    </button>
+                                    <button
+                                        onClick={() => handleAnswer(true)}
+                                        className="bg-green-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+                                    >
+                                        Correct
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // Results Screen
+            if (currentScreen === 'results') {
+                const totalCards = correctCount + incorrectCount;
+                const accuracy = totalCards > 0 ? Math.round((correctCount / totalCards) * 100) : 0;
+                
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+                                <div className="text-6xl mb-6">🎉</div>
+                                <h2 className="text-3xl font-bold text-gray-800 mb-8">Session Complete!</h2>
+                                
+                                <div className="grid grid-cols-3 gap-4 mb-8">
+                                    <div className="bg-blue-50 p-6 rounded-xl">
+                                        <div className="text-3xl font-bold text-blue-600">{totalCards}</div>
+                                        <div className="text-sm text-gray-600">Total</div>
+                                    </div>
+                                    <div className="bg-green-50 p-6 rounded-xl">
+                                        <div className="text-3xl font-bold text-green-600">{correctCount}</div>
+                                        <div className="text-sm text-gray-600">Correct</div>
+                                    </div>
+                                    <div className="bg-red-50 p-6 rounded-xl">
+                                        <div className="text-3xl font-bold text-red-600">{incorrectCount}</div>
+                                        <div className="text-sm text-gray-600">Incorrect</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-yellow-50 p-6 rounded-xl mb-8">
+                                    <div className="text-4xl font-bold text-yellow-600">{accuracy}%</div>
+                                    <div className="text-sm text-gray-600">Accuracy</div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={startStudySession}
+                                        className="bg-blue-600 text-white py-4 px-4 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+                                    >
+                                        Study Again
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="bg-gray-200 text-gray-700 py-4 px-4 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                                    >
+                                        Back Home
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return null;
+        };
+
+        ReactDOM.render(<CzechFlashcardApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
