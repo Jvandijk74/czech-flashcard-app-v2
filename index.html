@@ -161,7 +161,7 @@
             };
 
             const saveToDatabase = async (vocabulary) => {
-                if (!currentUser) return;
+                if (!currentUser || isSyncing) return;
                 
                 try {
                     setIsSyncing(true);
@@ -179,11 +179,16 @@
                         alert('Failed to sync vocabulary. Please try again.');
                     } else {
                         setLastSyncTime(new Date());
+                        console.log('Successfully synced vocabulary');
                     }
                 } catch (error) {
                     console.error('Error saving vocabulary:', error);
+                    alert('Sync failed due to network error. Please check your connection.');
                 } finally {
-                    setIsSyncing(false);
+                    // Add a small delay before allowing next sync
+                    setTimeout(() => {
+                        setIsSyncing(false);
+                    }, 1000);
                 }
             };
 
@@ -270,6 +275,11 @@
                 setManualCzech('');
                 setManualEnglish('');
                 alert('Card added successfully!');
+                
+                // Manual sync after adding card
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
             };
 
             const handleManualSubmit = (e) => {
@@ -497,6 +507,11 @@
                 setValidationResults([]);
                 setCurrentScreen('home');
                 alert(`Added ${validCards.length} new cards to your vocabulary!`);
+                
+                // Manual sync after adding cards from image
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
             };
 
             const approveCard = (index) => {
@@ -563,15 +578,15 @@
             }, []);
 
             useEffect(() => {
-                // Auto-save vocabulary when it changes
-                if (allVocabulary.length >= 0 && !isLoading && currentUser && isLoggedIn) {
+                // Auto-save vocabulary when it changes (but not during initial load)
+                if (allVocabulary.length > 0 && !isLoading && currentUser && isLoggedIn && !isSyncing) {
                     const timeoutId = setTimeout(() => {
                         saveToDatabase(allVocabulary);
-                    }, 2000);
+                    }, 3000); // Increased to 3 seconds to reduce frequency
 
                     return () => clearTimeout(timeoutId);
                 }
-            }, [allVocabulary, isLoading, currentUser, isLoggedIn]);
+            }, [allVocabulary, currentUser?.id]); // Simplified dependencies
 
             const currentCard = studyCards[currentCardIndex];
 
