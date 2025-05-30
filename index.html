@@ -190,14 +190,10 @@
                 }
 
                 if (isRegistering) {
-                    // For registration, we need username too
-                    const usernameInput = document.getElementById('usernameInput')?.value;
-                    if (!usernameInput || usernameInput.trim().length < 3) {
-                        alert('Please enter a username (at least 3 characters)');
-                        return;
-                    }
+                    // For registration, use email prefix as username if no separate username provided
+                    const usernameForRegistration = username.split('@')[0]; // Use email prefix as username
                     
-                    const success = await registerUser(username.trim(), password, usernameInput.trim());
+                    const success = await registerUser(username.trim(), password, usernameForRegistration);
                     if (success) {
                         setIsRegistering(false);
                         setPassword('');
