@@ -560,7 +560,8 @@
             ctx.imageSmoothingEnabled = false; // Important for OCR: no blur
 
             // Optional: slight contrast and brightness adjustment
-            ctx.filter = 'contrast(150%) brightness(110%)'; // Increase contrast slightly
+            ctx.filter = 'grayscale(100%) contrast(180%) brightness(120%)';
+
 
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
 
@@ -602,7 +603,7 @@
 
             // Set OCR parameters
             await worker.setParameters({
-                tessedit_pageseg_mode: 6, // 6 = Assume a single uniform block of text
+                tessedit_pageseg_mode: 4, // 6 = Assume a single uniform block of text
                 user_defined_dpi: 300,    // Force high-resolution DPI
                 preserve_interword_spaces: 1, // Keep spaces
                 tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789 -:→=.,!?()[]{}/"\''
