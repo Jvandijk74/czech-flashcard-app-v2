@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Czech Flashcard App - Multi-User</title>
+    <title>Czech Flashcard App - Spaced Repetition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇨🇿</text></svg>">
-    <meta name="description" content="Learn Czech vocabulary with multi-user cloud-synced flashcards!">
+    <meta name="description" content="Learn Czech vocabulary with spaced repetition and cloud sync!">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#3B82F6">
 </head>
@@ -33,13 +32,16 @@
             const [currentCardIndex, setCurrentCardIndex] = useState(0);
             const [showAnswer, setShowAnswer] = useState(false);
             const [studyCards, setStudyCards] = useState([]);
-            const [correctCount, setCorrectCount] = useState(0);
-            const [incorrectCount, setIncorrectCount] = useState(0);
+            const [sessionStats, setSessionStats] = useState({
+                cardsStudied: 0,
+                newCards: 0,
+                reviewCards: 0,
+                againCards: 0,
+                easyCards: 0,
+                normalCards: 0,
+                hardCards: 0
+            });
             const [allVocabulary, setAllVocabulary] = useState([]);
-            const [isProcessingImage, setIsProcessingImage] = useState(false);
-            const [newCards, setNewCards] = useState([]);
-            const [validationResults, setValidationResults] = useState([]);
-            const [isValidating, setIsValidating] = useState(false);
             const [manualCzech, setManualCzech] = useState('');
             const [manualEnglish, setManualEnglish] = useState('');
             const [userId, setUserId] = useState('');
@@ -52,12 +54,124 @@
             const [isLoggedIn, setIsLoggedIn] = useState(false);
             const [currentUser, setCurrentUser] = useState(null);
             const [connectionError, setConnectionError] = useState(null);
-            const [csvFile, setCsvFile] = useState(null);
             const [csvCards, setCsvCards] = useState([]);
             const [csvValidationResults, setCsvValidationResults] = useState([]);
             const [isProcessingCsv, setIsProcessingCsv] = useState(false);
-            const fileInputRef = useRef(null);
             const csvInputRef = useRef(null);
+
+            // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
+            const calculateNextReview = (card, difficulty) => {
+                const now = new Date();
+                let interval = card.interval || 1;
+                let easeFactor = card.easeFactor || 2.5;
+                let consecutiveCorrect = card.consecutiveCorrect || 0;
+                
+                switch (difficulty) {
+                    case 'again': // Failed - reset to beginning
+                        interval = 1; // Show again in 1 day
+                        consecutiveCorrect = 0;
+                        easeFactor = Math.max(1.3, easeFactor - 0.2);
+                        break;
+                        
+                    case 'hard': // Difficult - shorter interval
+                        if (consecutiveCorrect === 0) {
+                            interval = 1; // First time: 1 day
+                        } else if (consecutiveCorrect === 1) {
+                            interval = 6; // Second time: 6 days
+                        } else {
+                            interval = Math.ceil(interval * easeFactor * 1.2); // Slightly shorter than normal
+                        }
+                        consecutiveCorrect++;
+                        easeFactor = Math.max(1.3, easeFactor - 0.15);
+                        break;
+                        
+                    case 'normal': // Good - standard interval
+                        if (consecutiveCorrect === 0) {
+                            interval = 1; // First time: 1 day
+                        } else if (consecutiveCorrect === 1) {
+                            interval = 6; // Second time: 6 days
+                        } else {
+                            interval = Math.ceil(interval * easeFactor); // Standard progression
+                        }
+                        consecutiveCorrect++;
+                        break;
+                        
+                    case 'easy': // Easy - longer interval
+                        if (consecutiveCorrect === 0) {
+                            interval = 4; // First time: 4 days
+                        } else if (consecutiveCorrect === 1) {
+                            interval = 6; // Second time: 6 days
+                        } else {
+                            interval = Math.ceil(interval * easeFactor * 1.3); // Longer than normal
+                        }
+                        consecutiveCorrect++;
+                        easeFactor = Math.min(2.5, easeFactor + 0.15);
+                        break;
+                        
+                    default:
+                        interval = 1;
+                }
+                
+                const nextReviewDate = new Date(now);
+                nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+                
+                return {
+                    nextReviewDate: nextReviewDate.toISOString(),
+                    interval,
+                    easeFactor: Math.round(easeFactor * 100) / 100, // Round to 2 decimal places
+                    consecutiveCorrect,
+                    lastReviewed: now.toISOString()
+                };
+            };
+
+            // Get cards due for review
+            const getCardsForStudy = () => {
+                const now = new Date();
+                const dueCards = allVocabulary.filter(card => {
+                    if (!card.nextReviewDate) return true; // New cards
+                    return new Date(card.nextReviewDate) <= now;
+                });
+                
+                // Sort by priority: overdue cards first, then new cards
+                return dueCards.sort((a, b) => {
+                    const aDate = a.nextReviewDate ? new Date(a.nextReviewDate) : new Date(0);
+                    const bDate = b.nextReviewDate ? new Date(b.nextReviewDate) : new Date(0);
+                    return aDate - bDate;
+                });
+            };
+
+            // Update card after review
+            const updateCardProgress = (cardIndex, difficulty) => {
+                const card = studyCards[cardIndex];
+                const originalIndex = allVocabulary.findIndex(c => 
+                    c.czech === card.czech && c.english === card.english
+                );
+                
+                if (originalIndex === -1) return;
+                
+                const updatedCard = {
+                    ...allVocabulary[originalIndex],
+                    ...calculateNextReview(allVocabulary[originalIndex], difficulty)
+                };
+                
+                const updatedVocabulary = [...allVocabulary];
+                updatedVocabulary[originalIndex] = updatedCard;
+                setAllVocabulary(updatedVocabulary);
+                
+                // Update session stats
+                setSessionStats(prev => ({
+                    ...prev,
+                    cardsStudied: prev.cardsStudied + 1,
+                    [difficulty + 'Cards']: prev[difficulty + 'Cards'] + 1,
+                    newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
+                    reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
+                }));
+                
+                // Auto-save updated vocabulary
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
+            };
 
             // User management functions with Supabase
             const registerUser = async (email, password, username) => {
@@ -65,7 +179,6 @@
                     setIsLoading(true);
                     setConnectionError(null);
                     
-                    // Register with Supabase Auth
                     const { data, error } = await supabaseClient.auth.signUp({
                         email: email,
                         password: password,
@@ -150,16 +263,13 @@
                         console.error('Error loading vocabulary:', error);
                         
                         if (error.code === 'PGRST116') { 
-                            // No rows found - create initial record
                             console.log('No vocabulary found, creating initial record');
                             await saveToDatabase([]);
                             setAllVocabulary([]);
                         } else if (error.code === '42501') {
-                            // Permission denied - RLS issue
                             alert('Permission denied. Please check your account access.');
                             setAllVocabulary([]);
                         } else {
-                            // Other errors
                             console.error('Database error:', error.message);
                             setAllVocabulary([]);
                         }
@@ -204,7 +314,6 @@
                         if (error.code === '42501') {
                             alert('Permission denied. Please check your account permissions.');
                         } else if (error.code === '23505') {
-                            // Unique constraint violation - try update instead
                             console.log('Trying update instead of upsert...');
                             const { error: updateError } = await supabaseClient
                                 .from('user_vocabulary')
@@ -232,7 +341,6 @@
                     console.error('Error saving vocabulary:', error);
                     alert('Sync failed due to network error. Please check your connection.');
                 } finally {
-                    // Add a small delay before allowing next sync
                     setTimeout(() => {
                         setIsSyncing(false);
                     }, 1000);
@@ -246,7 +354,6 @@
                     return;
                 }
 
-                // Basic email validation
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 if (!emailRegex.test(email.trim())) {
                     setConnectionError('Please enter a valid email address');
@@ -254,8 +361,7 @@
                 }
 
                 if (isRegistering) {
-                    // For registration, use email prefix as username if no separate username provided
-                    const usernameForRegistration = email.split('@')[0]; // Use email prefix as username
+                    const usernameForRegistration = email.split('@')[0];
                     
                     const success = await registerUser(email.trim(), password, usernameForRegistration);
                     if (success) {
@@ -279,33 +385,42 @@
             };
 
             // Study functions
-            const shuffleCards = () => {
-                const shuffled = [...allVocabulary].sort(() => Math.random() - 0.5);
-                setStudyCards(shuffled);
-            };
-
             const startStudySession = () => {
-                shuffleCards();
+                const dueCards = getCardsForStudy();
+                if (dueCards.length === 0) {
+                    alert('No cards are due for review right now! Come back later or add more cards.');
+                    return;
+                }
+                
+                setStudyCards(dueCards);
                 setCurrentCardIndex(0);
                 setShowAnswer(false);
-                setCorrectCount(0);
-                setIncorrectCount(0);
+                setSessionStats({
+                    cardsStudied: 0,
+                    newCards: 0,
+                    reviewCards: 0,
+                    againCards: 0,
+                    easyCards: 0,
+                    normalCards: 0,
+                    hardCards: 0
+                });
                 setCurrentScreen('study');
             };
 
-            const handleAnswer = (isCorrect) => {
-                if (isCorrect) {
-                    setCorrectCount(prev => prev + 1);
-                } else {
-                    setIncorrectCount(prev => prev + 1);
-                }
-
+            const handleAnswer = (difficulty) => {
+                updateCardProgress(currentCardIndex, difficulty);
+                
                 setTimeout(() => {
-                    if (currentCardIndex < studyCards.length - 1) {
-                        setCurrentCardIndex(prev => prev + 1);
-                        setShowAnswer(false);
-                    } else {
+                    const updatedStudyCards = studyCards.filter((_, index) => index !== currentCardIndex);
+                    setStudyCards(updatedStudyCards);
+                    
+                    if (updatedStudyCards.length === 0) {
                         setCurrentScreen('results');
+                    } else {
+                        if (currentCardIndex >= updatedStudyCards.length) {
+                            setCurrentCardIndex(0);
+                        }
+                        setShowAnswer(false);
                     }
                 }, 500);
             };
@@ -317,18 +432,21 @@
                 }
                 
                 const newCard = {
-    czech: czech.trim(),
-    english: english.trim(),
-    correctInARow: 0,
-    nextReviewDate: new Date().toISOString() // Set next review to today
-};
+                    czech: czech.trim(),
+                    english: english.trim(),
+                    consecutiveCorrect: 0,
+                    easeFactor: 2.5,
+                    interval: 1,
+                    nextReviewDate: new Date().toISOString(),
+                    lastReviewed: null
+                };
+                
                 const updatedVocabulary = [...allVocabulary, newCard];
                 setAllVocabulary(updatedVocabulary);
                 setManualCzech('');
                 setManualEnglish('');
                 alert('Card added successfully!');
                 
-                // Manual sync after adding card
                 setTimeout(() => {
                     saveToDatabase(updatedVocabulary);
                 }, 500);
@@ -372,12 +490,10 @@
                 const validationRes = [];
 
                 lines.forEach((line, index) => {
-                    // Skip header row if it exists
                     if (index === 0 && (line.toLowerCase().includes('czech') || line.toLowerCase().includes('english'))) {
                         return;
                     }
 
-                    // Try different CSV delimiters
                     let parts = [];
                     if (line.includes(',')) {
                         parts = line.split(',');
@@ -413,7 +529,14 @@
                 const validCards = csvCards.filter((card, index) => {
                     const validation = csvValidationResults[index];
                     return !validation || validation.isValid || card.manuallyApproved;
-                });
+                }).map(card => ({
+                    ...card,
+                    consecutiveCorrect: 0,
+                    easeFactor: 2.5,
+                    interval: 1,
+                    nextReviewDate: new Date().toISOString(),
+                    lastReviewed: null
+                }));
                 
                 const updatedVocabulary = [...allVocabulary, ...validCards];
                 setAllVocabulary(updatedVocabulary);
@@ -422,7 +545,6 @@
                 setCurrentScreen('home');
                 alert(`Added ${validCards.length} new cards from CSV to your vocabulary!`);
                 
-                // Manual sync after adding cards from CSV
                 setTimeout(() => {
                     saveToDatabase(updatedVocabulary);
                 }, 500);
@@ -450,6 +572,7 @@
                     await saveToDatabase(allVocabulary);
                 }
             };
+            
             const validateCzechWord = (word) => {
                 const cleanWord = word.toLowerCase().trim();
                 const czechChars = ['č', 'š', 'ž', 'ř', 'ď', 'ť', 'ň', 'ů', 'á', 'é', 'í', 'ó', 'ú', 'ý'];
@@ -478,216 +601,6 @@
                 };
             };
 
-            const parseExtractedText = (text) => {
-                console.log('Parsing text:', text);
-                
-                const lines = text.split('\n').filter(line => line.trim());
-                const parsed = [];
-                const validationRes = [];
-
-                lines.forEach((line, index) => {
-                    // Clean up the line
-                    const cleanLine = line.trim().replace(/[""]/g, '"').replace(/['']/g, "'");
-                    
-                    // Try multiple patterns for Czech-English pairs
-                    const patterns = [
-                        /^(.+?)\s*[-–—]\s*(.+)$/,           // dash variants
-                        /^(.+?)\s*[:]\s*(.+)$/,             // colon
-                        /^(.+?)\s*[→➜]\s*(.+)$/,           // arrows
-                        /^(.+?)\s*[=]\s*(.+)$/,             // equals
-                        /^(.+?)\s*[|]\s*(.+)$/,             // pipe
-                        /^(.+?)\s+([A-Za-z].*)$/,           // space separated (if second part starts with letter)
-                        /^(.+?)\s*[,]\s*(.+)$/,             // comma
-                        /^(.+?)\s*[;]\s*(.+)$/,             // semicolon
-                    ];
-                    
-                    let match = null;
-                    for (const pattern of patterns) {
-                        match = cleanLine.match(pattern);
-                        if (match) break;
-                    }
-                    
-                    if (match && parsed.length < 200) {
-                        let czech = match[1].trim();
-                        let english = match[2].trim();
-                        
-                        // Clean up common OCR artifacts
-                        czech = czech.replace(/[|]/g, 'l').replace(/[0]/g, 'o').replace(/[5]/g, 's');
-                        english = english.replace(/[|]/g, 'l').replace(/[0]/g, 'o').replace(/[5]/g, 's');
-                        
-                        // Remove quotes if they wrap the entire string
-                        czech = czech.replace(/^["'](.*)["']$/, '$1');
-                        english = english.replace(/^["'](.*)["']$/, '$1');
-                        
-                        // Skip if either part is too short or contains mostly numbers/symbols
-                        if (czech.length >= 2 && english.length >= 2 && 
-                            !/^\d+$/.test(czech) && !/^\d+$/.test(english) &&
-                            !/^[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]+$/.test(czech) &&
-                            !/^[^a-zA-Z]+$/.test(english)) {
-                            
-                            const validation = validateCardPair(czech, english);
-                            parsed.push({ czech, english, id: index });
-                            validationRes.push(validation);
-                            
-                            console.log(`Found pair: "${czech}" - "${english}"`);
-                        }
-                    }
-                });
-
-                console.log(`Parsed ${parsed.length} pairs`);
-                setNewCards(parsed);
-                setValidationResults(validationRes);
-                
-                if (parsed.length > 0) {
-                    setIsValidating(true);
-                    setTimeout(() => {
-                        setIsValidating(false);
-                    }, 1500);
-                } else {
-                    // If no pairs found, show the raw text to user for manual input
-                    alert(`No vocabulary pairs detected. Raw text extracted:\n\n${text}\n\nYou can add cards manually instead.`);
-                }
-            };
-
-            const preprocessImage = (file) => {
-    return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        img.onload = () => {
-            // Full original size
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-
-            // Increase "virtual" DPI (scale x2)
-            ctx.scale(2, 2); // Makes OCR sharper
-            ctx.imageSmoothingEnabled = false; // Important for OCR: no blur
-
-            // Optional: slight contrast and brightness adjustment
-            ctx.filter = 'grayscale(100%) contrast(180%) brightness(120%)';
-
-
-            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-
-            // No aggressive thresholding - keep details!
-
-            // Output as Blob
-            canvas.toBlob(resolve, 'image/png');
-        };
-
-        img.src = URL.createObjectURL(file);
-    });
-};
-
-            const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    setIsProcessingImage(true);
-    setCurrentScreen('imageProcessing');
-
-    try {
-        console.log('Starting OCR process...');
-
-        if (window.Tesseract) {
-            const processedImage = await preprocessImage(file);
-
-            // ⬇️ CREATE WORKER INSTEAD OF window.Tesseract.recognize
-            const worker = await window.Tesseract.createWorker({
-                logger: m => {
-                    console.log(m);
-                    if (m.status === 'recognizing text') {
-                        // Progress bar could be updated here
-                    }
-                },
-            });
-
-            await worker.loadLanguage('ces+eng');
-            await worker.initialize('ces+eng');
-
-            // Set OCR parameters
-            await worker.setParameters({
-                tessedit_pageseg_mode: 4, // 6 = Assume a single uniform block of text
-                user_defined_dpi: 300,    // Force high-resolution DPI
-                preserve_interword_spaces: 1, // Keep spaces
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789 -:→=.,!?()[]{}/"\''
-            });
-
-            // Run OCR
-            const { data: { text } } = await worker.recognize(processedImage);
-
-            console.log('OCR Result:', text);
-
-            await worker.terminate();
-
-            if (text.trim()) {
-                parseExtractedText(text);
-            } else {
-                const userText = prompt(`OCR couldn't extract clear text. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
-                if (userText) {
-                    parseExtractedText(userText);
-                } else {
-                    setCurrentScreen('home');
-                }
-            }
-        } else {
-            const userText = prompt(`OCR library not loaded. Please manually enter the Czech-English pairs you see in the image (format: "czech - english", one per line):`);
-            if (userText) {
-                parseExtractedText(userText);
-            } else {
-                setCurrentScreen('home');
-            }
-        }
-    } catch (error) {
-        console.error('Error processing image:', error);
-        const userText = prompt(`Error processing image. Please manually enter the Czech-English pairs you see (format: "czech - english", one per line):`);
-        if (userText) {
-            parseExtractedText(userText);
-        } else {
-            alert('Error processing image. Please try again with a clearer image.');
-            setCurrentScreen('home');
-        }
-    }
-
-    setIsProcessingImage(false);
-};
-            const addNewCardsToVocabulary = () => {
-                const validCards = newCards.filter((card, index) => {
-                    const validation = validationResults[index];
-                    return !validation || validation.isValid || card.manuallyApproved;
-                });
-                
-                const updatedVocabulary = [...allVocabulary, ...validCards];
-                setAllVocabulary(updatedVocabulary);
-                setNewCards([]);
-                setValidationResults([]);
-                setCurrentScreen('home');
-                alert(`Added ${validCards.length} new cards to your vocabulary!`);
-                
-                // Manual sync after adding cards from image
-                setTimeout(() => {
-                    saveToDatabase(updatedVocabulary);
-                }, 500);
-            };
-
-            const approveCard = (index) => {
-                const updated = [...newCards];
-                updated[index].manuallyApproved = true;
-                setNewCards(updated);
-            };
-
-            const editCard = (index, field, value) => {
-                const updated = [...newCards];
-                updated[index][field] = value;
-                setNewCards(updated);
-            };
-
-            const removeCard = (index) => {
-                const updated = newCards.filter((_, i) => i !== index);
-                setNewCards(updated);
-            };
-
             // Initialize app and check for existing session
             useEffect(() => {
                 const checkSession = async () => {
@@ -695,7 +608,6 @@
                         console.log('Starting session check...');
                         setIsLoading(true);
                         
-                        // Add timeout to prevent hanging
                         const sessionPromise = supabaseClient.auth.getSession();
                         const timeoutPromise = new Promise((_, reject) => 
                             setTimeout(() => reject(new Error('Session check timeout')), 10000)
@@ -716,7 +628,6 @@
                             setEmail(session.user.email);
                             setIsLoggedIn(true);
                             setCurrentScreen('home');
-                            // Don't load vocabulary immediately, wait for user action
                         } else {
                             console.log('No existing session found');
                             setCurrentScreen('login');
@@ -730,10 +641,8 @@
                     }
                 };
 
-                // Add a small delay to ensure DOM is ready
                 const timer = setTimeout(checkSession, 500);
 
-                // Listen for auth changes
                 const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
                     async (event, session) => {
                         console.log('Auth state change:', event, session?.user?.email);
@@ -766,17 +675,53 @@
             }, []);
 
             useEffect(() => {
-                // Auto-save vocabulary when it changes (but not during initial load)
                 if (allVocabulary.length > 0 && !isLoading && currentUser && isLoggedIn && !isSyncing) {
                     const timeoutId = setTimeout(() => {
                         saveToDatabase(allVocabulary);
-                    }, 3000); // Increased to 3 seconds to reduce frequency
+                    }, 3000);
 
                     return () => clearTimeout(timeoutId);
                 }
-            }, [allVocabulary, currentUser?.id]); // Simplified dependencies
+            }, [allVocabulary, currentUser?.id]);
 
             const currentCard = studyCards[currentCardIndex];
+
+            // Helper function to get due cards count
+            const getDueCardsCount = () => {
+                const now = new Date();
+                return allVocabulary.filter(card => {
+                    if (!card.nextReviewDate) return true;
+                    return new Date(card.nextReviewDate) <= now;
+                }).length;
+            };
+
+            // Helper function to calculate next interval for display
+            const getNextInterval = (card, difficulty) => {
+                if (!card) return 1;
+                
+                const interval = card.interval || 1;
+                const easeFactor = card.easeFactor || 2.5;
+                const consecutiveCorrect = card.consecutiveCorrect || 0;
+                
+                switch (difficulty) {
+                    case 'again':
+                        return 1;
+                    case 'hard':
+                        if (consecutiveCorrect === 0) return 1;
+                        if (consecutiveCorrect === 1) return 6;
+                        return Math.ceil(interval * easeFactor * 1.2);
+                    case 'normal':
+                        if (consecutiveCorrect === 0) return 1;
+                        if (consecutiveCorrect === 1) return 6;
+                        return Math.ceil(interval * easeFactor);
+                    case 'easy':
+                        if (consecutiveCorrect === 0) return 4;
+                        if (consecutiveCorrect === 1) return 6;
+                        return Math.ceil(interval * easeFactor * 1.3);
+                    default:
+                        return 1;
+                }
+            };
 
             // Login Screen
             if (!isLoggedIn) {
@@ -852,10 +797,10 @@
                             <div className="mt-8 p-4 bg-blue-50 rounded-lg">
                                 <h3 className="font-semibold text-blue-800 mb-2">🌟 Features:</h3>
                                 <ul className="text-sm text-blue-700 space-y-1">
-                                    <li>• True cross-device sync with Supabase</li>
-                                    <li>• Personal vocabulary collection</li>
-                                    <li>• Add cards manually or from images</li>
-                                    <li>• Smart Czech-English validation</li>
+                                    <li>• Spaced repetition algorithm (Anki-style)</li>
+                                    <li>• Easy/Normal/Hard difficulty options</li>
+                                    <li>• Cloud sync across devices</li>
+                                    <li>• Add cards manually or from CSV</li>
                                 </ul>
                             </div>
 
@@ -869,7 +814,7 @@
                 );
             }
 
-            // Loading Screen - Updated to handle connection issues
+            // Loading Screen
             if (isLoading) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4 flex items-center justify-center">
@@ -899,6 +844,10 @@
 
             // Home Screen
             if (currentScreen === 'home') {
+                const dueCards = getDueCardsCount();
+                const newCardsCount = allVocabulary.filter(card => !card.lastReviewed).length;
+                const reviewCardsCount = allVocabulary.filter(card => card.lastReviewed && new Date(card.nextReviewDate) <= new Date()).length;
+                
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
                         <div className="max-w-md mx-auto">
@@ -920,20 +869,30 @@
 
                                 <div className="text-6xl mb-6">🇨🇿</div>
                                 <h1 className="text-3xl font-bold text-gray-800 mb-4">Czech Vocabulary</h1>
-                                <p className="text-gray-600 mb-8">Your personal flashcard collection</p>
+                                <p className="text-gray-600 mb-8">Spaced repetition learning system</p>
                                 
-                                <div className="grid grid-cols-2 gap-6 mb-6">
-                                    <div className="bg-blue-50 p-6 rounded-xl">
-                                        <div className="text-3xl font-bold text-blue-600">{allVocabulary.length}</div>
-                                        <div className="text-sm text-gray-600">Your Cards</div>
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-blue-50 p-4 rounded-xl">
+                                        <div className="text-2xl font-bold text-blue-600">{allVocabulary.length}</div>
+                                        <div className="text-sm text-gray-600">Total Cards</div>
                                     </div>
-                                    <div className="bg-green-50 p-6 rounded-xl">
-                                        <div className="text-3xl font-bold text-green-600">A1-A2</div>
-                                        <div className="text-sm text-gray-600">Level</div>
+                                    <div className="bg-orange-50 p-4 rounded-xl">
+                                        <div className="text-2xl font-bold text-orange-600">{dueCards}</div>
+                                        <div className="text-sm text-gray-600">Due Today</div>
                                     </div>
                                 </div>
 
-                                {/* Load vocabulary button if not loaded yet */}
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-green-50 p-4 rounded-xl">
+                                        <div className="text-xl font-bold text-green-600">{newCardsCount}</div>
+                                        <div className="text-sm text-gray-600">New</div>
+                                    </div>
+                                    <div className="bg-purple-50 p-4 rounded-xl">
+                                        <div className="text-xl font-bold text-purple-600">{reviewCardsCount}</div>
+                                        <div className="text-sm text-gray-600">Review</div>
+                                    </div>
+                                </div>
+
                                 {allVocabulary.length === 0 && !isSyncing && (
                                     <button
                                         onClick={() => loadUserVocabulary(currentUser)}
@@ -975,13 +934,20 @@
                                             Your vocabulary is empty. Add your first cards using the buttons below!
                                         </div>
                                     </div>
-                                ) : (
+                                ) : dueCards > 0 ? (
                                     <button
                                         onClick={startStudySession}
                                         className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
                                     >
-                                        Start Study Session
+                                        Study Now ({dueCards} cards)
                                     </button>
+                                ) : (
+                                    <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="text-green-800 font-semibold mb-2">🎉 All caught up!</div>
+                                        <div className="text-sm text-green-700">
+                                            No cards are due for review right now. Come back later or add more cards!
+                                        </div>
+                                    </div>
                                 )}
 
                                 {allVocabulary.length > 0 && (
@@ -1002,25 +968,10 @@
 
                                 <button
                                     onClick={() => csvInputRef.current?.click()}
-                                    className="w-full bg-orange-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors mb-4"
+                                    className="w-full bg-orange-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors"
                                 >
                                     Upload CSV File
                                 </button>
-
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
-                                >
-                                    Add Cards from Image
-                                </button>
-
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleImageUpload}
-                                    className="hidden"
-                                />
 
                                 <input
                                     ref={csvInputRef}
@@ -1052,35 +1003,33 @@
                                 </div>
 
                                 <form onSubmit={handleManualSubmit} className="space-y-6">
-                                    {/* Czech Word Field */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-2">
-    Czech Word
-  </label>
-  <input
-    type="text"
-    value={manualCzech}
-    onChange={(e) => setManualCzech(e.target.value)}
-    placeholder="Enter Czech word..."
-    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
-    required
-  />
-</div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Czech Word
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={manualCzech}
+                                            onChange={(e) => setManualCzech(e.target.value)}
+                                            placeholder="Enter Czech word..."
+                                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                                            required
+                                        />
+                                    </div>
 
-{/* English Word Field */}
-<div className="mt-4">
-  <label className="block text-sm font-medium text-gray-700 mb-2">
-    English Word
-  </label>
-  <input
-    type="text"
-    value={manualEnglish}
-    onChange={(e) => setManualEnglish(e.target.value)}
-    placeholder="Enter English word..."
-    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
-    required
-  />
-</div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            English Word
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={manualEnglish}
+                                            onChange={(e) => setManualEnglish(e.target.value)}
+                                            placeholder="Enter English word..."
+                                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                                            required
+                                        />
+                                    </div>
 
                                     <div className="flex gap-4">
                                         <button
@@ -1121,14 +1070,31 @@
                                 </div>
                                 
                                 <div className="max-h-96 overflow-y-auto">
-                                    {allVocabulary.map((card, index) => (
-                                        <div key={index} className="flex justify-between items-center p-4 border-b last:border-b-0 hover:bg-gray-50">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-lg text-red-600">{card.czech}</span>
-                                                <span className="text-gray-600">{card.english}</span>
+                                    {allVocabulary.map((card, index) => {
+                                        const isNew = !card.lastReviewed;
+                                        const isDue = card.nextReviewDate && new Date(card.nextReviewDate) <= new Date();
+                                        
+                                        return (
+                                            <div key={index} className="flex justify-between items-center p-4 border-b last:border-b-0 hover:bg-gray-50">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-lg text-red-600">{card.czech}</span>
+                                                    <span className="text-gray-600">{card.english}</span>
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {isNew ? (
+                                                            <span className="text-green-600 font-semibold">NEW</span>
+                                                        ) : (
+                                                            <span>
+                                                                Ease: {((card.easeFactor || 2.5) * 100).toFixed(0)}% • 
+                                                                Interval: {card.interval || 1}d • 
+                                                                Streak: {card.consecutiveCorrect || 0}
+                                                                {isDue && <span className="text-orange-600 font-semibold ml-2">DUE</span>}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -1136,7 +1102,7 @@
                 );
             }
 
-            // Study Screen
+            // Study Screen with Easy/Normal/Hard buttons
             if (currentScreen === 'study') {
                 if (!currentCard) return <div>Loading...</div>;
                 
@@ -1151,36 +1117,19 @@
                                     Home
                                 </button>
                                 <div className="text-white bg-black bg-opacity-20 px-4 py-2 rounded-full font-semibold">
-                                    {currentCardIndex + 1} / {studyCards.length}
+                                    {studyCards.length} cards left
                                 </div>
                                 <button
                                     onClick={() => {
+                                        const dueCards = getCardsForStudy();
+                                        setStudyCards(dueCards);
                                         setCurrentCardIndex(0);
                                         setShowAnswer(false);
-                                        setCorrectCount(0);
-                                        setIncorrectCount(0);
-                                        shuffleCards();
                                     }}
                                     className="p-3 text-white hover:bg-white hover:bg-opacity-20 rounded-full"
                                 >
                                     Reset
                                 </button>
-                            </div>
-
-                            <div className="bg-white bg-opacity-30 rounded-full h-3 mb-6">
-                                <div 
-                                    className="bg-yellow-400 h-3 rounded-full transition-all duration-500"
-                                    style={{ width: `${((currentCardIndex + 1) / studyCards.length) * 100}%` }}
-                                />
-                            </div>
-
-                            <div className="flex gap-4 mb-6">
-                                <div className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center font-semibold">
-                                    Correct: {correctCount}
-                                </div>
-                                <div className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center font-semibold">
-                                    Wrong: {incorrectCount}
-                                </div>
                             </div>
 
                             <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6 min-h-64 flex flex-col justify-center items-center text-center">
@@ -1193,6 +1142,20 @@
                                         {currentCard.english}
                                     </div>
                                 )}
+                                
+                                {showAnswer && (
+                                    <div className="mt-4 text-sm text-gray-500">
+                                        {currentCard.lastReviewed ? (
+                                            <div>
+                                                <div>Current interval: {currentCard.interval || 1} days</div>
+                                                <div>Ease factor: {((currentCard.easeFactor || 2.5) * 100).toFixed(0)}%</div>
+                                                <div>Consecutive correct: {currentCard.consecutiveCorrect || 0}</div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-blue-600 font-semibold">NEW CARD</div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {!showAnswer ? (
@@ -1203,18 +1166,30 @@
                                     Show Answer
                                 </button>
                             ) : (
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-3">
                                     <button
-                                        onClick={() => handleAnswer(false)}
-                                        className="bg-red-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-red-600 transition-colors"
+                                        onClick={() => handleAnswer('again')}
+                                        className="w-full bg-red-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-red-600 transition-colors"
                                     >
-                                        Wrong
+                                        Again ({getNextInterval(currentCard, 'again')}d)
                                     </button>
                                     <button
-                                        onClick={() => handleAnswer(true)}
-                                        className="bg-green-500 text-white py-4 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+                                        onClick={() => handleAnswer('hard')}
+                                        className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors"
                                     >
-                                        Correct
+                                        Hard ({getNextInterval(currentCard, 'hard')}d)
+                                    </button>
+                                    <button
+                                        onClick={() => handleAnswer('normal')}
+                                        className="w-full bg-green-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+                                    >
+                                        Good ({getNextInterval(currentCard, 'normal')}d)
+                                    </button>
+                                    <button
+                                        onClick={() => handleAnswer('easy')}
+                                        className="w-full bg-blue-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors"
+                                    >
+                                        Easy ({getNextInterval(currentCard, 'easy')}d)
                                     </button>
                                 </div>
                             )}
@@ -1225,9 +1200,6 @@
 
             // Results Screen
             if (currentScreen === 'results') {
-                const totalCards = correctCount + incorrectCount;
-                const accuracy = totalCards > 0 ? Math.round((correctCount / totalCards) * 100) : 0;
-                
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
                         <div className="max-w-md mx-auto">
@@ -1235,24 +1207,34 @@
                                 <div className="text-6xl mb-6">🎉</div>
                                 <h2 className="text-3xl font-bold text-gray-800 mb-8">Session Complete!</h2>
                                 
-                                <div className="grid grid-cols-3 gap-4 mb-8">
-                                    <div className="bg-blue-50 p-6 rounded-xl">
-                                        <div className="text-3xl font-bold text-blue-600">{totalCards}</div>
-                                        <div className="text-sm text-gray-600">Total</div>
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-blue-50 p-4 rounded-xl">
+                                        <div className="text-2xl font-bold text-blue-600">{sessionStats.cardsStudied}</div>
+                                        <div className="text-sm text-gray-600">Cards Studied</div>
                                     </div>
-                                    <div className="bg-green-50 p-6 rounded-xl">
-                                        <div className="text-3xl font-bold text-green-600">{correctCount}</div>
-                                        <div className="text-sm text-gray-600">Correct</div>
-                                    </div>
-                                    <div className="bg-red-50 p-6 rounded-xl">
-                                        <div className="text-3xl font-bold text-red-600">{incorrectCount}</div>
-                                        <div className="text-sm text-gray-600">Incorrect</div>
+                                    <div className="bg-green-50 p-4 rounded-xl">
+                                        <div className="text-2xl font-bold text-green-600">{sessionStats.newCards}</div>
+                                        <div className="text-sm text-gray-600">New Cards</div>
                                     </div>
                                 </div>
 
-                                <div className="bg-yellow-50 p-6 rounded-xl mb-8">
-                                    <div className="text-4xl font-bold text-yellow-600">{accuracy}%</div>
-                                    <div className="text-sm text-gray-600">Accuracy</div>
+                                <div className="grid grid-cols-4 gap-2 mb-8">
+                                    <div className="bg-red-50 p-3 rounded-lg">
+                                        <div className="text-lg font-bold text-red-600">{sessionStats.againCards}</div>
+                                        <div className="text-xs text-gray-600">Again</div>
+                                    </div>
+                                    <div className="bg-orange-50 p-3 rounded-lg">
+                                        <div className="text-lg font-bold text-orange-600">{sessionStats.hardCards}</div>
+                                        <div className="text-xs text-gray-600">Hard</div>
+                                    </div>
+                                    <div className="bg-green-50 p-3 rounded-lg">
+                                        <div className="text-lg font-bold text-green-600">{sessionStats.normalCards}</div>
+                                        <div className="text-xs text-gray-600">Good</div>
+                                    </div>
+                                    <div className="bg-blue-50 p-3 rounded-lg">
+                                        <div className="text-lg font-bold text-blue-600">{sessionStats.easyCards}</div>
+                                        <div className="text-xs text-gray-600">Easy</div>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
@@ -1260,7 +1242,7 @@
                                         onClick={startStudySession}
                                         className="bg-blue-600 text-white py-4 px-4 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
                                     >
-                                        Study Again
+                                        Study More
                                     </button>
                                     <button
                                         onClick={() => setCurrentScreen('home')}
@@ -1452,202 +1434,6 @@
                                         <button
                                             onClick={addCsvCardsToVocabulary}
                                             className="w-full bg-orange-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-orange-700 transition-colors mb-3"
-                                        >
-                                            Add Valid Cards to Vocabulary
-                                        </button>
-                                    )}
-                                    
-                                    <button
-                                        onClick={() => setCurrentScreen('home')}
-                                        className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            // Image Processing Screen
-            if (currentScreen === 'imageProcessing') {
-                return (
-                    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-700 p-4">
-                        <div className="max-w-md mx-auto">
-                            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
-                                <div className="text-6xl mb-6">📷</div>
-                                <h2 className="text-2xl font-bold text-gray-800 mb-4">Processing Image</h2>
-                                
-                                {isProcessingImage ? (
-                                    <div>
-                                        <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent mx-auto mb-4"></div>
-                                        <p className="text-gray-600">Extracting text from your image...</p>
-                                        <p className="text-sm text-gray-500 mt-2">Supports up to 200 cards</p>
-                                    </div>
-                                ) : isValidating ? (
-                                    <div>
-                                        <div className="animate-pulse flex space-x-1 justify-center mb-4">
-                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                        </div>
-                                        <p className="text-gray-600">Validating Czech-English pairs...</p>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <div className="text-4xl mb-4">✅</div>
-                                        <p className="text-gray-600 mb-6">Processing complete!</p>
-                                        
-                                        {newCards.length > 0 ? (
-                                            <div>
-                                                <p className="text-green-600 font-semibold mb-2">
-                                                    Found {newCards.length} vocabulary pairs
-                                                </p>
-                                                {validationResults.length > 0 && (
-                                                    <div className="mb-4">
-                                                        <p className="text-sm text-gray-600">
-                                                            ✅ Valid: {validationResults.filter(v => v.isValid).length} | 
-                                                            ⚠️ Needs review: {validationResults.filter(v => !v.isValid).length}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                                <button
-                                                    onClick={() => setCurrentScreen('editCards')}
-                                                    className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-3"
-                                                >
-                                                    Review & Edit Cards
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <p className="text-red-600 mb-4">No vocabulary pairs found. Please try a different image.</p>
-                                        )}
-                                        
-                                        <button
-                                            onClick={() => setCurrentScreen('home')}
-                                            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
-                                        >
-                                            Back to Home
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            // Edit Cards Screen
-            if (currentScreen === 'editCards') {
-                return (
-                    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-700 p-4">
-                        <div className="max-w-md mx-auto">
-                            <div className="bg-white rounded-2xl shadow-2xl">
-                                <div className="flex items-center justify-between p-6 border-b">
-                                    <button
-                                        onClick={() => setCurrentScreen('home')}
-                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
-                                    >
-                                        ← Back
-                                    </button>
-                                    <h2 className="text-xl font-semibold">Review New Cards ({newCards.length})</h2>
-                                    <div></div>
-                                </div>
-                                
-                                <div className="p-6">
-                                    <div className="max-h-96 overflow-y-auto mb-6">
-                                        {newCards.map((card, index) => {
-                                            const validation = validationResults[index];
-                                            const isValid = !validation || validation.isValid || card.manuallyApproved;
-                                            
-                                            return (
-                                                <div key={index} className={`p-4 rounded-lg mb-4 border-2 ${
-                                                    isValid ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
-                                                }`}>
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div className="flex items-center">
-                                                            <span className="text-sm text-gray-500 mr-2">Card {index + 1}</span>
-                                                            {isValid ? (
-                                                                <span className="text-green-600 text-sm">✅ Valid</span>
-                                                            ) : (
-                                                                <span className="text-yellow-600 text-sm">⚠️ Needs review</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            {!isValid && (
-                                                                <button
-                                                                    onClick={() => approveCard(index)}
-                                                                    className="text-green-600 hover:text-green-700 text-sm px-2 py-1 bg-green-100 rounded"
-                                                                >
-                                                                    Approve
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={() => removeCard(index)}
-                                                                className="text-red-500 hover:text-red-700 text-sm px-2 py-1 bg-red-100 rounded"
-                                                            >
-                                                                Remove
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {validation && !validation.isValid && !card.manuallyApproved && (
-                                                        <div className="mb-3 p-2 bg-yellow-100 rounded text-sm">
-                                                            <strong>Issues detected:</strong>
-                                                            <ul className="list-disc list-inside text-yellow-700">
-                                                                {validation.issues.map((issue, i) => (
-                                                                    <li key={i}>{issue}</li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    <div className="space-y-3">
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                Czech {!validation?.czechValid && !card.manuallyApproved && (
-                                                                    <span className="text-red-500">⚠️</span>
-                                                                )}
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                value={card.czech}
-                                                                onChange={(e) => editCard(index, 'czech', e.target.value)}
-                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                                                            />
-                                                        </div>
-                                                        
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                English {!validation?.englishValid && !card.manuallyApproved && (
-                                                                    <span className="text-red-500">⚠️</span>
-                                                                )}
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                value={card.english}
-                                                                onChange={(e) => editCard(index, 'english', e.target.value)}
-                                                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    
-                                    {newCards.length > 0 && (
-                                        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                                            <div className="text-sm text-blue-700">
-                                                <strong>Summary:</strong> {newCards.filter((_, i) => !validationResults[i] || validationResults[i].isValid || newCards[i].manuallyApproved).length} cards ready to add
-                                            </div>
-                                        </div>
-                                    )}
-                                    
-                                    {newCards.length > 0 && (
-                                        <button
-                                            onClick={addNewCardsToVocabulary}
-                                            className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-3"
                                         >
                                             Add Valid Cards to Vocabulary
                                         </button>
