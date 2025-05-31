@@ -57,7 +57,159 @@
             const [csvCards, setCsvCards] = useState([]);
             const [csvValidationResults, setCsvValidationResults] = useState([]);
             const [isProcessingCsv, setIsProcessingCsv] = useState(false);
+            const [feedbackText, setFeedbackText] = useState('');
+            const [allFeedback, setAllFeedback] = useState([]);
+            const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+            const [communityPosts, setCommunityPosts] = useState([]);
+            const [newPostTitle, setNewPostTitle] = useState('');
+            const [newPostContent, setNewPostContent] = useState('');
+            const [isSubmittingPost, setIsSubmittingPost] = useState(false);
+            const [selectedPost, setSelectedPost] = useState(null);
+            const [newComment, setNewComment] = useState('');
+            const [isSubmittingComment, setIsSubmittingComment] = useState(false);
             const csvInputRef = useRef(null);
+
+            // Feedback and Community functions
+            const loadFeedback = async () => {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('feedback')
+                        .select('id, feedback_text, user_email, created_at')
+                        .order('created_at', { ascending: false })
+                        .limit(50);
+
+                    if (error) {
+                        console.error('Error loading feedback:', error);
+                        return;
+                    }
+
+                    setAllFeedback(data || []);
+                } catch (error) {
+                    console.error('Error loading feedback:', error);
+                }
+            };
+
+            const submitFeedback = async () => {
+                if (!feedbackText.trim()) {
+                    alert('Please enter your feedback');
+                    return;
+                }
+
+                setIsSubmittingFeedback(true);
+                try {
+                    const { error } = await supabaseClient
+                        .from('feedback')
+                        .insert({
+                            feedback_text: feedbackText.trim(),
+                            user_email: currentUser?.email || 'anonymous',
+                            created_at: new Date().toISOString()
+                        });
+
+                    if (error) {
+                        console.error('Error submitting feedback:', error);
+                        alert('Failed to submit feedback. Please try again.');
+                    } else {
+                        setFeedbackText('');
+                        alert('Thank you for your feedback!');
+                        loadFeedback(); // Refresh feedback list
+                    }
+                } catch (error) {
+                    console.error('Error submitting feedback:', error);
+                    alert('Failed to submit feedback. Please try again.');
+                } finally {
+                    setIsSubmittingFeedback(false);
+                }
+            };
+
+            const loadCommunityPosts = async () => {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('community_posts')
+                        .select(`
+                            id, title, content, user_email, created_at,
+                            comments:community_comments(
+                                id, comment_text, user_email, created_at
+                            )
+                        `)
+                        .order('created_at', { ascending: false })
+                        .limit(20);
+
+                    if (error) {
+                        console.error('Error loading community posts:', error);
+                        return;
+                    }
+
+                    setCommunityPosts(data || []);
+                } catch (error) {
+                    console.error('Error loading community posts:', error);
+                }
+            };
+
+            const submitCommunityPost = async () => {
+                if (!newPostTitle.trim() || !newPostContent.trim()) {
+                    alert('Please enter both title and content');
+                    return;
+                }
+
+                setIsSubmittingPost(true);
+                try {
+                    const { error } = await supabaseClient
+                        .from('community_posts')
+                        .insert({
+                            title: newPostTitle.trim(),
+                            content: newPostContent.trim(),
+                            user_email: currentUser?.email || 'anonymous',
+                            created_at: new Date().toISOString()
+                        });
+
+                    if (error) {
+                        console.error('Error submitting post:', error);
+                        alert('Failed to submit post. Please try again.');
+                    } else {
+                        setNewPostTitle('');
+                        setNewPostContent('');
+                        alert('Post created successfully!');
+                        loadCommunityPosts(); // Refresh posts list
+                    }
+                } catch (error) {
+                    console.error('Error submitting post:', error);
+                    alert('Failed to submit post. Please try again.');
+                } finally {
+                    setIsSubmittingPost(false);
+                }
+            };
+
+            const submitComment = async (postId) => {
+                if (!newComment.trim()) {
+                    alert('Please enter a comment');
+                    return;
+                }
+
+                setIsSubmittingComment(true);
+                try {
+                    const { error } = await supabaseClient
+                        .from('community_comments')
+                        .insert({
+                            post_id: postId,
+                            comment_text: newComment.trim(),
+                            user_email: currentUser?.email || 'anonymous',
+                            created_at: new Date().toISOString()
+                        });
+
+                    if (error) {
+                        console.error('Error submitting comment:', error);
+                        alert('Failed to submit comment. Please try again.');
+                    } else {
+                        setNewComment('');
+                        loadCommunityPosts(); // Refresh posts to show new comment
+                    }
+                } catch (error) {
+                    console.error('Error submitting comment:', error);
+                    alert('Failed to submit comment. Please try again.');
+                } finally {
+                    setIsSubmittingComment(false);
+                }
+            };
 
             // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
             const calculateNextReview = (card, difficulty) => {
@@ -968,8 +1120,25 @@
 
                                 <button
                                     onClick={() => csvInputRef.current?.click()}
-                                    className="w-full bg-orange-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors"
+                                    className="w-full bg-orange-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors mb-4"
                                 >
+                                    Upload CSV File
+                                </button>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => setCurrentScreen('feedback')}
+                                        className="bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
+                                    >
+                                        Feedback
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentScreen('community')}
+                                        className="bg-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-indigo-700 transition-colors"
+                                    >
+                                        Community
+                                    </button>
+                                </div>
                                     Upload CSV File
                                 </button>
 
@@ -1250,6 +1419,229 @@
                                     >
                                         Back Home
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Feedback Screen
+            if (currentScreen === 'feedback') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl">
+                                <div className="flex items-center p-6 border-b">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-xl font-semibold">Feedback & Suggestions</h2>
+                                </div>
+                                
+                                <div className="p-6">
+                                    {/* Submit Feedback Form */}
+                                    <div className="mb-6 p-4 bg-purple-50 rounded-lg">
+                                        <h3 className="font-semibold text-purple-800 mb-3">Share Your Feedback</h3>
+                                        <textarea
+                                            value={feedbackText}
+                                            onChange={(e) => setFeedbackText(e.target.value)}
+                                            placeholder="Tell us how we can improve the app, report bugs, or suggest new features..."
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                                            rows="4"
+                                            maxLength="500"
+                                        />
+                                        <div className="flex justify-between items-center mt-3">
+                                            <span className="text-sm text-gray-500">
+                                                {feedbackText.length}/500 characters
+                                            </span>
+                                            <button
+                                                onClick={submitFeedback}
+                                                disabled={isSubmittingFeedback || !feedbackText.trim()}
+                                                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50"
+                                            >
+                                                {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Load Feedback Button */}
+                                    <button
+                                        onClick={loadFeedback}
+                                        className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-semibold hover:bg-gray-200 transition-colors mb-4"
+                                    >
+                                        Load Recent Feedback
+                                    </button>
+
+                                    {/* Feedback List */}
+                                    <div className="max-h-96 overflow-y-auto">
+                                        <h3 className="font-semibold text-gray-800 mb-3">Recent Feedback from Users</h3>
+                                        {allFeedback.length === 0 ? (
+                                            <div className="text-center text-gray-500 py-8">
+                                                <div className="text-4xl mb-2">💭</div>
+                                                <p>No feedback yet. Be the first to share your thoughts!</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {allFeedback.map((feedback) => (
+                                                    <div key={feedback.id} className="bg-gray-50 p-4 rounded-lg">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <span className="text-sm font-medium text-gray-600">
+                                                                {feedback.user_email.split('@')[0]}
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">
+                                                                {new Date(feedback.created_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-gray-800">{feedback.feedback_text}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Community Screen
+            if (currentScreen === 'community') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-indigo-600 to-blue-700 p-4">
+                        <div className="max-w-md mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl">
+                                <div className="flex items-center p-6 border-b">
+                                    <button
+                                        onClick={() => setCurrentScreen('home')}
+                                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h2 className="text-xl font-semibold">Community Hub</h2>
+                                </div>
+                                
+                                <div className="p-6">
+                                    {/* Create New Post */}
+                                    <div className="mb-6 p-4 bg-indigo-50 rounded-lg">
+                                        <h3 className="font-semibold text-indigo-800 mb-3">Share with the Community</h3>
+                                        <input
+                                            type="text"
+                                            value={newPostTitle}
+                                            onChange={(e) => setNewPostTitle(e.target.value)}
+                                            placeholder="Post title..."
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
+                                            maxLength="100"
+                                        />
+                                        <textarea
+                                            value={newPostContent}
+                                            onChange={(e) => setNewPostContent(e.target.value)}
+                                            placeholder="Share tips, ask questions, or start a discussion about learning Czech..."
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                            rows="3"
+                                            maxLength="300"
+                                        />
+                                        <div className="flex justify-between items-center mt-3">
+                                            <span className="text-sm text-gray-500">
+                                                {newPostContent.length}/300 characters
+                                            </span>
+                                            <button
+                                                onClick={submitCommunityPost}
+                                                disabled={isSubmittingPost || !newPostTitle.trim() || !newPostContent.trim()}
+                                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                            >
+                                                {isSubmittingPost ? 'Posting...' : 'Create Post'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Load Posts Button */}
+                                    <button
+                                        onClick={loadCommunityPosts}
+                                        className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-semibold hover:bg-gray-200 transition-colors mb-4"
+                                    >
+                                        Load Community Posts
+                                    </button>
+
+                                    {/* Community Posts */}
+                                    <div className="max-h-96 overflow-y-auto">
+                                        <h3 className="font-semibold text-gray-800 mb-3">Community Discussions</h3>
+                                        {communityPosts.length === 0 ? (
+                                            <div className="text-center text-gray-500 py-8">
+                                                <div className="text-4xl mb-2">🗣️</div>
+                                                <p>No posts yet. Start the conversation!</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {communityPosts.map((post) => (
+                                                    <div key={post.id} className="bg-gray-50 p-4 rounded-lg">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <span className="text-sm font-medium text-indigo-600">
+                                                                {post.user_email.split('@')[0]}
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">
+                                                                {new Date(post.created_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                        <h4 className="font-semibold text-gray-800 mb-2">{post.title}</h4>
+                                                        <p className="text-gray-700 mb-3">{post.content}</p>
+                                                        
+                                                        {/* Comments Section */}
+                                                        {post.comments && post.comments.length > 0 && (
+                                                            <div className="border-t pt-3 mt-3">
+                                                                <h5 className="text-sm font-semibold text-gray-600 mb-2">
+                                                                    Comments ({post.comments.length})
+                                                                </h5>
+                                                                {post.comments
+                                                                    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+                                                                    .map((comment) => (
+                                                                    <div key={comment.id} className="bg-white p-2 rounded mb-2">
+                                                                        <div className="flex justify-between items-start mb-1">
+                                                                            <span className="text-xs font-medium text-blue-600">
+                                                                                {comment.user_email.split('@')[0]}
+                                                                            </span>
+                                                                            <span className="text-xs text-gray-400">
+                                                                                {new Date(comment.created_at).toLocaleDateString()}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-sm text-gray-700">{comment.comment_text}</p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* Add Comment */}
+                                                        <div className="border-t pt-3 mt-3">
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={selectedPost === post.id ? newComment : ''}
+                                                                    onChange={(e) => {
+                                                                        setSelectedPost(post.id);
+                                                                        setNewComment(e.target.value);
+                                                                    }}
+                                                                    placeholder="Add a comment..."
+                                                                    className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm"
+                                                                    maxLength="200"
+                                                                />
+                                                                <button
+                                                                    onClick={() => submitComment(post.id)}
+                                                                    disabled={isSubmittingComment || !newComment.trim() || selectedPost !== post.id}
+                                                                    className="bg-indigo-600 text-white px-3 py-2 rounded font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 text-sm"
+                                                                >
+                                                                    {isSubmittingComment ? '...' : 'Reply'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
