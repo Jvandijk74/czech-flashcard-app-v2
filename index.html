@@ -938,20 +938,15 @@ if (currentScreen === 'home') {
                                 Study AnkiDroid ({dueCards} cards)
                             </button>
 
-                            <div className="space-y-3 mb-4">
-                                <button
-                                    onClick={() => startTypingRecallGame('czech-to-english')}
-                                    className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
-                                >
-                                    Typing Recall: Czech ➔ English
-                                </button>
-                                <button
-                                    onClick={() => startTypingRecallGame('english-to-czech')}
-                                    className="w-full bg-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-indigo-700 transition-colors"
-                                >
-                                    Typing Recall: English ➔ Czech
-                                </button>
-                            </div>
+                            <div className="mb-4">
+  <button
+    onClick={() => setCurrentScreen('activeRecallMenu')}
+    className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
+  >
+    Active Recall
+  </button>
+</div>
+
                         </>
                     ) : (
                         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
