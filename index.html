@@ -64,6 +64,14 @@
             const [showFeedback, setShowFeedback] = useState(false);
             const [isCorrect, setIsCorrect] = useState(false);
             const [typingRecallMode, setTypingRecallMode] = useState('czech-to-english'); // or 'english-to-czech'
+            const [activeRecallStats, setActiveRecallStats] = useState({
+                totalAttempts: 0,
+                correctAnswers: 0,
+                sessionCorrect: 0,
+                sessionTotal: 0
+            });
+            const [difficultWords, setDifficultWords] = useState(new Set());
+            const [sessionWrongCards, setSessionWrongCards] = useState([]);
 
 
             // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
@@ -416,14 +424,162 @@
     }, 500);
 };
 
-            const startTypingRecallGame = (mode) => {
-    const shuffled = [...allVocabulary].sort(() => Math.random() - 0.5); // Shuffle cards
-    setTypingGameCards(shuffled);
+            // Smart word selection function
+const getSmartActiveRecallCards = (mode, maxCards = 20) => {
+    const now = new Date();
+    
+    // Get cards with performance data
+    const cardsWithPerformance = allVocabulary.map(card => {
+        const performance = card.activeRecallPerformance || {
+            attempts: 0,
+            correct: 0,
+            accuracy: 0,
+            lastAttempt: null
+        };
+        
+        // Calculate priority score (higher = more likely to appear)
+        let priority = 1;
+        
+        // Prioritize words with low accuracy
+        if (performance.attempts > 0) {
+            const accuracy = performance.correct / performance.attempts;
+            priority = Math.max(0.1, 1 - accuracy); // Lower accuracy = higher priority
+        }
+        
+        // Boost priority for due cards
+        const isDue = !card.nextReviewDate || new Date(card.nextReviewDate) <= now;
+        if (isDue) priority *= 2;
+        
+        // Boost priority for new cards
+        if (!card.lastReviewed) priority *= 1.5;
+        
+        // Boost priority for recently wrong cards
+        if (difficultWords.has(card.czech + '|' + card.english)) {
+            priority *= 3;
+        }
+        
+        return { ...card, priority, performance };
+    });
+    
+    // Weighted random selection
+    const selectedCards = [];
+    const availableCards = [...cardsWithPerformance];
+    
+    for (let i = 0; i < Math.min(maxCards, availableCards.length); i++) {
+        // Calculate total weight
+        const totalWeight = availableCards.reduce((sum, card) => sum + card.priority, 0);
+        
+        // Random selection based on weight
+        let random = Math.random() * totalWeight;
+        let selectedIndex = 0;
+        
+        for (let j = 0; j < availableCards.length; j++) {
+            random -= availableCards[j].priority;
+            if (random <= 0) {
+                selectedIndex = j;
+                break;
+            }
+        }
+        
+        selectedCards.push(availableCards[selectedIndex]);
+        availableCards.splice(selectedIndex, 1);
+    }
+    
+    // Add session wrong cards to the end for repetition
+    const wrongCardsToRepeat = sessionWrongCards.filter(wrongCard => 
+        !selectedCards.some(card => card.czech === wrongCard.czech && card.english === wrongCard.english)
+    );
+    
+    return [...selectedCards, ...wrongCardsToRepeat];
+};
+
+// Enhanced typing recall game starter
+const startTypingRecallGame = (mode) => {
+    const smartCards = getSmartActiveRecallCards(mode, 20);
+    setTypingGameCards(smartCards);
     setTypingCurrentIndex(0);
     setUserInput('');
     setShowFeedback(false);
     setTypingRecallMode(mode);
+    setActiveRecallStats(prev => ({
+        ...prev,
+        sessionCorrect: 0,
+        sessionTotal: 0
+    }));
+    setSessionWrongCards([]);
     setCurrentScreen('typingRecall');
+};
+
+// Performance tracking function
+const updateActiveRecallPerformance = (card, correct) => {
+    const cardIndex = allVocabulary.findIndex(c => 
+        c.czech === card.czech && c.english === card.english
+    );
+    
+    if (cardIndex === -1) return;
+    
+    const updatedCard = { ...allVocabulary[cardIndex] };
+    
+    if (!updatedCard.activeRecallPerformance) {
+        updatedCard.activeRecallPerformance = {
+            attempts: 0,
+            correct: 0,
+            accuracy: 0,
+            lastAttempt: null
+        };
+    }
+    
+    updatedCard.activeRecallPerformance.attempts += 1;
+    updatedCard.activeRecallPerformance.correct += correct ? 1 : 0;
+    updatedCard.activeRecallPerformance.accuracy = 
+        updatedCard.activeRecallPerformance.correct / updatedCard.activeRecallPerformance.attempts;
+    updatedCard.activeRecallPerformance.lastAttempt = new Date().toISOString();
+    
+    const updatedVocabulary = [...allVocabulary];
+    updatedVocabulary[cardIndex] = updatedCard;
+    setAllVocabulary(updatedVocabulary);
+    
+    // Auto-save
+    setTimeout(() => {
+        saveToDatabase(updatedVocabulary);
+    }, 500);
+};
+
+// Enhanced answer checking
+const checkTypingAnswer = () => {
+    const currentTypingCard = typingGameCards[typingCurrentIndex];
+    const correctAnswer = typingRecallMode === 'czech-to-english' 
+        ? currentTypingCard.english.toLowerCase().trim()
+        : currentTypingCard.czech.toLowerCase().trim();
+    const userAnswer = userInput.toLowerCase().trim();
+    const correct = correctAnswer === userAnswer;
+    
+    setIsCorrect(correct);
+    setShowFeedback(true);
+    
+    // Update performance tracking
+    updateActiveRecallPerformance(currentTypingCard, correct);
+    
+    // Update session stats
+    setActiveRecallStats(prev => ({
+        totalAttempts: prev.totalAttempts + 1,
+        correctAnswers: prev.correctAnswers + (correct ? 1 : 0),
+        sessionCorrect: prev.sessionCorrect + (correct ? 1 : 0),
+        sessionTotal: prev.sessionTotal + 1
+    }));
+    
+    // Track difficult words
+    if (!correct) {
+        const cardKey = currentTypingCard.czech + '|' + currentTypingCard.english;
+        setDifficultWords(prev => new Set([...prev, cardKey]));
+        setSessionWrongCards(prev => {
+            // Only add if not already in the list
+            const exists = prev.some(card => 
+                card.czech === currentTypingCard.czech && card.english === currentTypingCard.english
+            );
+            return exists ? prev : [...prev, currentTypingCard];
+        });
+    }
 };
 
             const addManualCard = (czech, english) => {
@@ -1205,128 +1361,239 @@ if (currentScreen === 'home') {
                 );
             }
 if (currentScreen === 'activeRecallMenu') {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
-        <h2 className="text-3xl font-bold mb-6">🧠 Active Recall</h2>
-        <div className="space-y-4">
-          <button
-            onClick={() => startTypingRecallGame('czech-to-english')}
-            className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
-          >
-            Type English Word
-          </button>
-          <button
-            onClick={() => startTypingRecallGame('english-to-czech')}
-            className="w-full bg-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-indigo-700 transition-colors"
-          >
-            Type Czech Word
-          </button>
-          <button
-            onClick={() => setCurrentScreen('home')}
-            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors mt-4"
-          >
-            ← Back to Home
-          </button>
+    const totalAccuracy = activeRecallStats.totalAttempts > 0 
+        ? Math.round((activeRecallStats.correctAnswers / activeRecallStats.totalAttempts) * 100)
+        : 0;
+    
+    const sessionAccuracy = activeRecallStats.sessionTotal > 0
+        ? Math.round((activeRecallStats.sessionCorrect / activeRecallStats.sessionTotal) * 100)
+        : 0;
+    
+    // Get words that need practice
+    const wordsNeedingPractice = allVocabulary
+        .filter(card => {
+            const perf = card.activeRecallPerformance;
+            return perf && perf.attempts >= 3 && perf.accuracy < 0.7;
+        })
+        .sort((a, b) => a.activeRecallPerformance.accuracy - b.activeRecallPerformance.accuracy)
+        .slice(0, 5);
+    
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
+                <h2 className="text-3xl font-bold mb-6">🧠 Smart Active Recall</h2>
+                
+                {/* Performance Stats */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-blue-50 p-4 rounded-xl">
+                        <div className="text-2xl font-bold text-blue-600">{totalAccuracy}%</div>
+                        <div className="text-sm text-gray-600">Overall Accuracy</div>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-xl">
+                        <div className="text-2xl font-bold text-green-600">{sessionAccuracy}%</div>
+                        <div className="text-sm text-gray-600">Session Accuracy</div>
+                    </div>
+                </div>
+                
+                {/* Session stats */}
+                {activeRecallStats.sessionTotal > 0 && (
+                    <div className="mb-6 p-3 bg-gray-50 rounded-lg">
+                        <div className="text-sm text-gray-600">
+                            This session: {activeRecallStats.sessionCorrect}/{activeRecallStats.sessionTotal} correct
+                        </div>
+                    </div>
+                )}
+                
+                {/* Words needing practice */}
+                {wordsNeedingPractice.length > 0 && (
+                    <div className="mb-6 p-3 bg-yellow-50 rounded-lg">
+                        <div className="text-sm font-semibold text-yellow-800 mb-2">
+                            Words needing practice:
+                        </div>
+                        <div className="text-xs text-yellow-700">
+                            {wordsNeedingPractice.map(card => card.czech).join(', ')}
+                        </div>
+                    </div>
+                )}
+                
+                <div className="space-y-4">
+                    <button
+                        onClick={() => startTypingRecallGame('czech-to-english')}
+                        className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
+                    >
+                        Type English Word
+                        <div className="text-sm opacity-80">Smart selection based on difficulty</div>
+                    </button>
+                    <button
+                        onClick={() => startTypingRecallGame('english-to-czech')}
+                        className="w-full bg-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-indigo-700 transition-colors"
+                    >
+                        Type Czech Word
+                        <div className="text-sm opacity-80">Focuses on your weak points</div>
+                    </button>
+                    <button
+                        onClick={() => setCurrentScreen('home')}
+                        className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors mt-4"
+                    >
+                        ← Back to Home
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }
 
-            if (currentScreen === 'typingRecall') {
+          if (currentScreen === 'typingRecall') {
     const currentTypingCard = typingGameCards[typingCurrentIndex];
 
     if (!currentTypingCard) {
+        const sessionAccuracy = activeRecallStats.sessionTotal > 0
+            ? Math.round((activeRecallStats.sessionCorrect / activeRecallStats.sessionTotal) * 100)
+            : 0;
+            
         return (
             <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
                 <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md">
-                    <h2 className="text-3xl font-bold mb-4">🎉 Game Complete!</h2>
-                    <button
-                        onClick={() => setCurrentScreen('home')}
-                        className="bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-                    >
-                        Back to Home
-                    </button>
+                    <h2 className="text-3xl font-bold mb-4">🎉 Session Complete!</h2>
+                    
+                    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600">{sessionAccuracy}%</div>
+                        <div className="text-sm text-gray-600">Session Accuracy</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                            {activeRecallStats.sessionCorrect}/{activeRecallStats.sessionTotal} correct
+                        </div>
+                    </div>
+                    
+                    {sessionWrongCards.length > 0 && (
+                        <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
+                            <div className="text-sm font-semibold text-yellow-800 mb-2">
+                                Words to review:
+                            </div>
+                            <div className="text-xs text-yellow-700">
+                                {sessionWrongCards.slice(0, 3).map(card => card.czech).join(', ')}
+                                {sessionWrongCards.length > 3 && '...'}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => startTypingRecallGame(typingRecallMode)}
+                            className="w-full bg-purple-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+                        >
+                            Practice Again
+                        </button>
+                        <button
+                            onClick={() => setCurrentScreen('activeRecallMenu')}
+                            className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+                        >
+                            Back to Active Recall
+                        </button>
+                        <button
+                            onClick={() => setCurrentScreen('home')}
+                            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                        >
+                            Home
+                        </button>
+                    </div>
                 </div>
             </div>
         );
     }
 
-    return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex flex-col items-center justify-center">
-        {/* Back to Home Button */}
-        <div className="w-full flex justify-start mb-4">
-            <button
-                onClick={() => setCurrentScreen('home')}
-                className="text-white bg-black bg-opacity-30 px-4 py-2 rounded-full hover:bg-opacity-50 transition"
-            >
-                ← Home
-            </button>
-        </div>
+    const cardPerformance = currentTypingCard.activeRecallPerformance;
+    const showPerformance = cardPerformance && cardPerformance.attempts > 0;
 
-        <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
-            <div className="text-4xl font-bold text-red-600 mb-6">
-                {typingRecallMode === 'czech-to-english' 
-                    ? currentTypingCard.czech 
-                    : currentTypingCard.english}
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex flex-col items-center justify-center">
+            {/* Header with progress and stats */}
+            <div className="w-full max-w-md flex justify-between items-center mb-4">
+                <button
+                    onClick={() => setCurrentScreen('activeRecallMenu')}
+                    className="text-white bg-black bg-opacity-30 px-4 py-2 rounded-full hover:bg-opacity-50 transition"
+                >
+                    ← Back
+                </button>
+                <div className="text-white bg-black bg-opacity-30 px-4 py-2 rounded-full">
+                    {typingCurrentIndex + 1}/{typingGameCards.length}
+                </div>
+                <div className="text-white bg-black bg-opacity-30 px-4 py-2 rounded-full">
+                    {activeRecallStats.sessionTotal > 0 ? 
+                        `${Math.round((activeRecallStats.sessionCorrect / activeRecallStats.sessionTotal) * 100)}%` 
+                        : '0%'}
+                </div>
             </div>
 
-            <input
-                type="text"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                placeholder="Type your answer"
-                className="w-full p-4 mb-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-            />
+            <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
+                <div className="text-4xl font-bold text-red-600 mb-6">
+                    {typingRecallMode === 'czech-to-english' 
+                        ? currentTypingCard.czech 
+                        : currentTypingCard.english}
+                </div>
 
-            {/* 🔥 FIX: Wrap these two blocks */}
-            <>
-                {!showFeedback && (
-                    <button
-                        onClick={() => {
-                            const correctAnswer = typingRecallMode === 'czech-to-english' 
-                                ? currentTypingCard.english.toLowerCase().trim()
-                                : currentTypingCard.czech.toLowerCase().trim();
-                            const userAnswer = userInput.toLowerCase().trim();
-                            setIsCorrect(correctAnswer === userAnswer);
-                            setShowFeedback(true);
-                        }}
-                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors"
-                    >
-                        Check
-                    </button>
-                )}
-
-                {showFeedback && (
-                    <div className="mt-6">
-                        {isCorrect ? (
-                            <div className="text-green-600 font-bold text-xl mb-4">✅ Correct!</div>
-                        ) : (
-                            <div className="text-red-600 font-bold text-xl mb-4">
-                                ❌ Wrong! Correct: {typingRecallMode === 'czech-to-english' 
-                                    ? currentTypingCard.english 
-                                    : currentTypingCard.czech}
-                            </div>
-                        )}
-
-                        <button
-                            onClick={() => {
-                                setUserInput('');
-                                setShowFeedback(false);
-                                setTypingCurrentIndex(typingCurrentIndex + 1);
-                            }}
-                            className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-700 transition-colors"
-                        >
-                            Next
-                        </button>
+                {/* Show card performance if available */}
+                {showPerformance && (
+                    <div className="mb-4 p-2 bg-gray-50 rounded text-xs text-gray-600">
+                        Your accuracy: {Math.round(cardPerformance.accuracy * 100)}% 
+                        ({cardPerformance.correct}/{cardPerformance.attempts})
                     </div>
                 )}
-            </>
-        </div>
-    </div>
-);
 
+                <input
+                    type="text"
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !showFeedback) {
+                            checkTypingAnswer();
+                        }
+                    }}
+                    placeholder="Type your answer"
+                    className="w-full p-4 mb-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                    autoFocus
+                />
+
+                <>
+                    {!showFeedback && (
+                        <button
+                            onClick={checkTypingAnswer}
+                            className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Check Answer
+                        </button>
+                    )}
+
+                    {showFeedback && (
+                        <div className="mt-6">
+                            {isCorrect ? (
+                                <div className="text-green-600 font-bold text-xl mb-4">✅ Correct!</div>
+                            ) : (
+                                <div className="text-red-600 font-bold text-xl mb-4">
+                                    ❌ Wrong! 
+                                    <div className="text-lg mt-2">
+                                        Correct: {typingRecallMode === 'czech-to-english' 
+                                            ? currentTypingCard.english 
+                                            : currentTypingCard.czech}
+                                    </div>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => {
+                                    setUserInput('');
+                                    setShowFeedback(false);
+                                    setTypingCurrentIndex(typingCurrentIndex + 1);
+                                }}
+                                className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-700 transition-colors"
+                            >
+                                Next Card
+                            </button>
+                        </div>
+                    )}
+                </>
+            </div>
+        </div>
+    );
 }
 
 
