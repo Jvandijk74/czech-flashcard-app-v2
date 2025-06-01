@@ -1121,28 +1121,14 @@ if (currentScreen === 'home') {
             )}
 
             {/* Add Cards Block */}
-            <div 
-                onClick={() => setCurrentScreen('manualAdd')}
-                className="bg-gradient-to-br from-green-500 to-teal-500 rounded-xl p-4 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-            >
-                <div className="text-3xl mb-2">➕</div>
-                <div className="font-bold text-lg mb-1">Add Cards</div>
-                <div className="text-xs opacity-80">Manual entry</div>
-            </div>
-        </div>
-
-        {/* CSV Upload - Full width below the grid */}
-        <div 
-            onClick={() => csvInputRef.current?.click()}
-            className="bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-4 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-        >
-            <div className="flex items-center justify-between">
-                <div>
-                    <div className="font-bold text-lg mb-1">Import CSV File</div>
-                    <div className="text-sm opacity-90">Bulk upload vocabulary cards</div>
-                </div>
-                <div className="text-3xl">📄</div>
-            </div>
+<div 
+    onClick={() => setCurrentScreen('addCardsMenu')}
+    className="bg-gradient-to-br from-green-500 to-teal-500 rounded-xl p-4 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+>
+    <div className="text-3xl mb-2">➕</div>
+    <div className="font-bold text-lg mb-1">Add Cards</div>
+    <div className="text-xs opacity-80">Manual or CSV import</div>
+</div>
         </div>
     </div>
 ) : (
@@ -1714,6 +1700,75 @@ if (currentScreen === 'activeRecallMenu') {
                 );
             }
 
+
+
+            // Add Cards Menu Screen
+if (currentScreen === 'addCardsMenu') {
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-teal-700 p-4 flex items-center justify-center">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
+                <div className="flex items-center mb-6">
+                    <button
+                        onClick={() => setCurrentScreen('home')}
+                        className="mr-4 p-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                    >
+                        ← Back
+                    </button>
+                    <h2 className="text-2xl font-bold text-gray-800">Add New Cards</h2>
+                </div>
+
+                <div className="text-5xl mb-6">➕</div>
+                <p className="text-gray-600 mb-8">Choose how you'd like to add new vocabulary cards</p>
+
+                <div className="space-y-4">
+                    {/* Manual Add Block */}
+                    <div 
+                        onClick={() => setCurrentScreen('manualAdd')}
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="text-left">
+                                <div className="text-xl font-bold mb-1">Manual Entry</div>
+                                <div className="text-sm opacity-90">Add cards one by one</div>
+                            </div>
+                            <div className="text-3xl">✏️</div>
+                        </div>
+                    </div>
+
+                    {/* CSV Import Block */}
+                    <div 
+                        onClick={() => csvInputRef.current?.click()}
+                        className="bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-6 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="text-left">
+                                <div className="text-xl font-bold mb-1">Import CSV</div>
+                                <div className="text-sm opacity-90">Bulk upload from file</div>
+                            </div>
+                            <div className="text-3xl">📄</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+                    <div className="text-sm text-gray-600">
+                        <strong>CSV Format:</strong> czech_word,english_word<br/>
+                        Example: dobrý den,good day
+                    </div>
+                </div>
+
+                {/* Hidden CSV input */}
+                <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleCsvUpload}
+                    className="hidden"
+                />
+            </div>
+        </div>
+    );
+}
             // CSV Processing Screen
             if (currentScreen === 'csvProcessing') {
                 return (
