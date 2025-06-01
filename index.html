@@ -141,13 +141,22 @@
                 setAllVocabulary(updatedVocabulary);
                 
                 // Update session stats
-                setSessionStats(prev => ({
-                    ...prev,
-                    cardsStudied: prev.cardsStudied + 1,
-                    [difficulty + 'Cards']: prev[difficulty + 'Cards'] + 1,
-                    newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
-                    reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
-                }));
+
+                                    const difficultyMap = {
+                        1: 'again',
+                        3: 'hard', 
+                        4: 'normal',
+                        5: 'easy'
+                    };
+                    
+                    setSessionStats(prev => ({
+                        ...prev,
+                        cardsStudied: prev.cardsStudied + 1,
+                        [`${difficultyMap[difficulty]}Cards`]: prev[`${difficultyMap[difficulty]}Cards`] + 1,
+                        newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
+                        reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
+                    }));
+                    
                 
                 // Auto-save updated vocabulary
                 setTimeout(() => {
@@ -620,6 +629,7 @@
                             setEmail(session.user.email);
                             setIsLoggedIn(true);
                             setCurrentScreen('home');
+                            await loadUserVocabulary(session.user);
                         } else {
                             console.log('No existing session found');
                             setCurrentScreen('login');
