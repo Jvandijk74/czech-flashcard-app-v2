@@ -58,6 +58,13 @@
             const [csvValidationResults, setCsvValidationResults] = useState([]);
             const [isProcessingCsv, setIsProcessingCsv] = useState(false);
             const csvInputRef = useRef(null);
+            const [typingGameCards, setTypingGameCards] = useState([]);
+            const [typingCurrentIndex, setTypingCurrentIndex] = useState(0);
+            const [userInput, setUserInput] = useState('');
+            const [showFeedback, setShowFeedback] = useState(false);
+            const [isCorrect, setIsCorrect] = useState(false);
+            const [typingRecallMode, setTypingRecallMode] = useState('czech-to-english'); // or 'english-to-czech'
+
 
             // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
             const calculateNextReview = (card, grade) => {
@@ -400,6 +407,15 @@
     }, 500);
 };
 
+            const startTypingRecallGame = (mode) => {
+    const shuffled = [...allVocabulary].sort(() => Math.random() - 0.5); // Shuffle cards
+    setTypingGameCards(shuffled);
+    setTypingCurrentIndex(0);
+    setUserInput('');
+    setShowFeedback(false);
+    setTypingRecallMode(mode);
+    setCurrentScreen('typingRecall');
+};
 
             const addManualCard = (czech, english) => {
                 if (!czech.trim() || !english.trim()) {
@@ -908,8 +924,24 @@
                                         onClick={startStudySession}
                                         className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors mb-4"
                                     >
-                                        Study Now ({dueCards} cards)
+                                        Study AnkiDroid ({dueCards} cards)
                                     </button>
+
+                        <div className="space-y-3 mb-4">
+    <button
+        onClick={() => startTypingRecallGame('czech-to-english')}
+        className="w-full bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-purple-700 transition-colors"
+    >
+        Typing Recall: Czech ➔ English
+    </button>
+    <button
+        onClick={() => startTypingRecallGame('english-to-czech')}
+        className="w-full bg-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-indigo-700 transition-colors"
+    >
+        Typing Recall: English ➔ Czech
+    </button>
+</div>
+
                                 ) : (
                                     <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                                         <div className="text-green-800 font-semibold mb-2">🎉 All caught up!</div>
@@ -1166,6 +1198,88 @@
                     </div>
                 );
             }
+
+            if (currentScreen === 'typingRecall') {
+    const currentTypingCard = typingGameCards[typingCurrentIndex];
+
+    if (!currentTypingCard) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
+                <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md">
+                    <h2 className="text-3xl font-bold mb-4">🎉 Game Complete!</h2>
+                    <button
+                        onClick={() => setCurrentScreen('home')}
+                        className="bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                        Back to Home
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
+                <div className="text-4xl font-bold text-red-600 mb-6">
+                    {typingRecallMode === 'czech-to-english' 
+                        ? currentTypingCard.czech 
+                        : currentTypingCard.english}
+                </div>
+
+                <input
+                    type="text"
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="Type your answer"
+                    className="w-full p-4 mb-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                />
+
+                {!showFeedback && (
+                    <button
+                        onClick={() => {
+                            const correctAnswer = typingRecallMode === 'czech-to-english' 
+                                ? currentTypingCard.english.toLowerCase().trim()
+                                : currentTypingCard.czech.toLowerCase().trim();
+                            const userAnswer = userInput.toLowerCase().trim();
+                            setIsCorrect(correctAnswer === userAnswer);
+                            setShowFeedback(true);
+                        }}
+                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Check
+                    </button>
+                )}
+
+                {showFeedback && (
+                    <div className="mt-6">
+                        {isCorrect ? (
+                            <div className="text-green-600 font-bold text-xl mb-4">✅ Correct!</div>
+                        ) : (
+                            <div className="text-red-600 font-bold text-xl mb-4">
+                                ❌ Wrong! Correct: {typingRecallMode === 'czech-to-english' 
+                                    ? currentTypingCard.english 
+                                    : currentTypingCard.czech}
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => {
+                                setUserInput('');
+                                setShowFeedback(false);
+                                setTypingCurrentIndex(typingCurrentIndex + 1);
+                            }}
+                            className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-700 transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 
             // Results Screen
             if (currentScreen === 'results') {
