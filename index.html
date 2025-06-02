@@ -921,7 +921,8 @@ const checkTypingAnswer = () => {
                             setTimeout(() => reject(new Error('Session check timeout')), 10000)
                         );
                         
-                        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
+                        const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
+const session = data?.session;
                         
                         if (error) {
                             console.error('Session check error:', error);
@@ -952,7 +953,7 @@ const checkTypingAnswer = () => {
 
                 const timer = setTimeout(checkSession, 500);
 
-                const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
+                const { data: subscription } = supabaseClient.auth.onAuthStateChange(
                     async (event, session) => {
                         console.log('Auth state change:', event, session?.user?.email);
                         
@@ -1588,23 +1589,23 @@ const newCardsAvailable = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
         Again ({getNextInterval(currentCard, 1)}d)
     </button>
     <button
-        onClick={() => handleAnswer(3)}
-        className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors"
-    >
-        Hard ({getNextInterval(currentCard, 3)}d)
-    </button>
-    <button
-        onClick={() => handleAnswer(4)}
-        className="w-full bg-green-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
-    >
-        Good ({getNextInterval(currentCard, 4)}d)
-    </button>
-    <button
-        onClick={() => handleAnswer(5)}
-        className="w-full bg-blue-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors"
-    >
-        Easy ({getNextInterval(currentCard, 5)}d)
-    </button>
+    onClick={() => handleAnswer(2)}
+    className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors"
+>
+    Hard ({getNextInterval(currentCard, 2)}d)
+</button>
+<button
+    onClick={() => handleAnswer(3)}
+    className="w-full bg-green-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+>
+    Good ({getNextInterval(currentCard, 3)}d)
+</button>
+<button
+    onClick={() => handleAnswer(4)}
+    className="w-full bg-blue-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors"
+>
+    Easy ({getNextInterval(currentCard, 4)}d)
+</button>
 </div>
                             )}
                         </div>
