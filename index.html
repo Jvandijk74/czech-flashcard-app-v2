@@ -1180,25 +1180,40 @@ const getDueCardsCount = () => {
             // Home Screen
 if (currentScreen === 'home') {
     const dueCards = getDueCardsCount(); // ADD THIS LINE
-    const learningCount = allVocabulary.filter(card => 
-    card.state === CARD_STATES.LEARNING && 
-    card.nextReviewDate && 
-    new Date(card.nextReviewDate) <= new Date()
-).length;
+    // Use the same logic as getCardsForStudy for consistency
+const now = new Date();
+const today = now.toDateString();
 
-const reviewCount = allVocabulary.filter(card => 
-    (card.state === CARD_STATES.REVIEW || card.state === CARD_STATES.LAPSED) &&
-    card.nextReviewDate &&
-    new Date(card.nextReviewDate) <= new Date()
-).length;
-
-const todaysNewCardsSeen = allVocabulary.filter(card => {
-    return card.state === CARD_STATES.NEW &&
-        card.lastReviewed &&
-        new Date(card.lastReviewed).toDateString() === (new Date()).toDateString();
+// Learning cards that are due
+const learningCount = allVocabulary.filter(card => {
+    if (card.state !== CARD_STATES.LEARNING) return false;
+    if (!card.nextReviewDate) return false;
+    return new Date(card.nextReviewDate) <= now;
 }).length;
 
-const newCardsAvailable = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
+// Review cards that are due (capped at daily limit)
+const reviewCardsDue = allVocabulary.filter(card => {
+    if (card.state !== CARD_STATES.REVIEW && card.state !== CARD_STATES.LAPSED) return false;
+    if (!card.nextReviewDate) return false;
+    return new Date(card.nextReviewDate) <= now;
+});
+const reviewCount = Math.min(reviewCardsDue.length, REVIEW_CARDS_PER_DAY);
+
+// New cards calculation (same as getDueCardsCount)
+const todaysNewCardsSeen = allVocabulary.filter(card => {
+    if (!card.lastReviewed) return false;
+    return new Date(card.lastReviewed).toDateString() === today;
+}).length;
+
+const newCardsAvailable = allVocabulary.filter(card => 
+    card.state === CARD_STATES.NEW || (!card.nextReviewDate && !card.lastReviewed)
+);
+
+const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
+const newCardsDueToday = Math.min(newCardsAvailable.length, remainingNewCards);
+
+// Total due cards (should match dueCards variable)
+const totalDueCards = learningCount + reviewCount + newCardsDueToday;
 
     
     return (
@@ -1230,7 +1245,7 @@ const newCardsAvailable = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
                             <div className="text-sm text-gray-600">Total Cards</div>
                         </div>
                         <div className="bg-orange-50 p-4 rounded-xl">
-                            <div className="text-2xl font-bold text-orange-600">{learningCount + reviewCount}</div>
+                            <div className="text-2xl font-bold text-orange-600">{totalDueCards}</div>
 <div className="text-sm text-gray-600">Due Today</div>
 
                         </div>
@@ -1238,7 +1253,7 @@ const newCardsAvailable = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
 
                     <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-green-50 p-4 rounded-xl">
-                            <div className="text-2xl font-bold text-green-600">{newCardsAvailable}</div>
+                            <div className="text-2xl font-bold text-green-600">{newCardsDueToday}</div>
 <div className="text-sm text-gray-600">New Today</div>
 
                         </div>
