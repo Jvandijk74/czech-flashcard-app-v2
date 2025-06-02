@@ -26,71 +26,7 @@
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1eWRzd3V0dnN0dGJwdnJ1eWxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MDQzMjgsImV4cCI6MjA2NDE4MDMyOH0.RvrljR2_T4oDCWkyrvCxPSRc7aiUYflzQ8sX_cU-urI';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-        // Card states
-const CARD_STATES = {
-    NEW: 'new',
-    LEARNING: 'learning', 
-    REVIEW: 'review',
-    LAPSED: 'lapsed'
-};
-
-// Learning steps in minutes (1m, 10m, then graduate to 1 day)
-const LEARNING_STEPS = [1, 10]; // minutes
-const GRADUATING_INTERVAL = 1; // days
-const NEW_CARDS_PER_DAY = 20; // Daily limit for new cards
-const REVIEW_CARDS_PER_DAY = 100; // Daily limit for review cards (recommended value)
-        
-// Initialize a new card with proper structure
-const createNewCard = (czech, english) => {
-    return {
-        czech: czech.trim(),
-        english: english.trim(),
-        state: CARD_STATES.NEW,
-        currentStep: 0, // For learning phase
-        interval: 0, // Days
-        easeFactor: 2.5,
-        repetitions: 0,
-        nextReviewDate: null, // null for new cards
-        lastReviewed: null,
-        lapseCount: 0,
-        createdAt: new Date().toISOString()
-    };
-};
-
-// Migration function to fix existing cards
-const migrateExistingCards = (vocabulary) => {
-    return vocabulary.map(card => {
-        // If card doesn't have the new structure, migrate it
-        if (!card.state) {
-            return {
-                ...card,
-                state: card.lastReviewed ? CARD_STATES.REVIEW : CARD_STATES.NEW,
-                currentStep: 0,
-                interval: card.interval || 1,
-                easeFactor: card.easeFactor || 2.5,
-                repetitions: card.repetitions || 0,
-                lapseCount: 0,
-                createdAt: card.createdAt || new Date().toISOString()
-            };
-        }
-        return card;
-    });
-};
-
-        // Shuffle Helper
-function shuffle(array) {
-    let currentIndex = array.length, randomIndex;
-
-    while (currentIndex !== 0) {
-        randomIndex = Math.floor(Math.random() * currentIndex);
-        currentIndex--;
-        [array[currentIndex], array[randomIndex]] = [
-            array[randomIndex], array[currentIndex]];
-    }
-    return array;
-}
-
-const CzechFlashcardApp = () => {
+        const CzechFlashcardApp = () => {
             // All state variables
             const [currentScreen, setCurrentScreen] = useState('login');
             const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -141,158 +77,103 @@ const CzechFlashcardApp = () => {
 
 
 
-            // Enhanced spaced repetition calculation
-const calculateNextReview = (card, grade) => {
+            // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
+            const calculateNextReview = (card, grade) => {
     const now = new Date();
-    let newCard = { ...card };
     
-    // Grade mapping: 1=Again, 2=Hard, 3=Good, 4=Easy
-    if (grade === 1) { // Again - Reset to learning
-        newCard.state = CARD_STATES.LEARNING;
-        newCard.currentStep = 0;
-        newCard.lapseCount = (newCard.lapseCount || 0) + 1;
-        newCard.easeFactor = Math.max(1.3, newCard.easeFactor - 0.2);
-        
-        // Next review in 1 minute (first learning step)
-        const nextReview = new Date(now);
-        nextReview.setMinutes(now.getMinutes() + LEARNING_STEPS[0]);
-        newCard.nextReviewDate = nextReview.toISOString();
-        
-    } else if (newCard.state === CARD_STATES.NEW || newCard.state === CARD_STATES.LEARNING) {
-        // Handle learning phase
-        if (grade >= 3) { // Good or Easy
-            newCard.currentStep = (newCard.currentStep || 0) + 1;
-            
-            if (newCard.currentStep >= LEARNING_STEPS.length) {
-                // Graduate to review phase
-                newCard.state = CARD_STATES.REVIEW;
-                newCard.interval = GRADUATING_INTERVAL;
-                newCard.repetitions = 1;
-                
-                const nextReview = new Date(now);
-                nextReview.setDate(now.getDate() + GRADUATING_INTERVAL);
-                newCard.nextReviewDate = nextReview.toISOString();
-            } else {
-                // Continue in learning phase
-                newCard.state = CARD_STATES.LEARNING;
-                const nextReview = new Date(now);
-                nextReview.setMinutes(now.getMinutes() + LEARNING_STEPS[newCard.currentStep]);
-                newCard.nextReviewDate = nextReview.toISOString();
-            }
-        } else { // Hard (grade 2)
-            // Repeat current learning step
-            newCard.state = CARD_STATES.LEARNING;
-            const nextReview = new Date(now);
-            nextReview.setMinutes(now.getMinutes() + LEARNING_STEPS[newCard.currentStep || 0]);
-            newCard.nextReviewDate = nextReview.toISOString();
+    let interval = card.interval || 1;
+    let easeFactor = card.easeFactor || 2.5;
+    let repetitions = card.repetitions || 0;
+
+    if (grade < 3) {
+        // If failed (grade 0-2), reset repetitions
+        repetitions = 0;
+        interval = 1;
+    } else {
+        repetitions += 1;
+        if (repetitions === 1) {
+            interval = 1;
+        } else if (repetitions === 2) {
+            interval = 6;
+        } else {
+            interval = Math.round(interval * easeFactor);
         }
-        
-    } else if (newCard.state === CARD_STATES.REVIEW) {
-        // Handle review phase
-        newCard.repetitions += 1;
-        
-        if (grade === 2) { // Hard
-            newCard.interval = Math.max(1, Math.round(newCard.interval * 1.2));
-            newCard.easeFactor = Math.max(1.3, newCard.easeFactor - 0.15);
-        } else if (grade === 3) { // Good
-            newCard.interval = Math.round(newCard.interval * newCard.easeFactor);
-        } else if (grade === 4) { // Easy
-            newCard.interval = Math.round(newCard.interval * newCard.easeFactor * 1.3);
-            newCard.easeFactor += 0.15;
-        }
-        
-        // Cap maximum interval at 365 days
-        newCard.interval = Math.min(365, newCard.interval);
-        
-        const nextReview = new Date(now);
-        nextReview.setDate(now.getDate() + newCard.interval);
-        newCard.nextReviewDate = nextReview.toISOString();
+
+        // Adjust easeFactor based on grade
+        easeFactor += (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
+        if (easeFactor < 1.3) easeFactor = 1.3;
     }
-    
-    newCard.lastReviewed = now.toISOString();
-    return newCard;
+
+    const nextReviewDate = new Date(now);
+    nextReviewDate.setDate(now.getDate() + interval);
+
+    return {
+        nextReviewDate: nextReviewDate.toISOString(),
+        interval,
+        easeFactor: Math.round(easeFactor * 100) / 100,
+        repetitions,
+        lastReviewed: now.toISOString()
+    };
 };
 
 
-            // Get cards for today's study session
-const getCardsForStudy = () => {
-    const now = new Date();
-    const today = now.toDateString();
-
-    // Step 1: Learning cards — always show
-    const learningCards = allVocabulary.filter(card => {
-        if (card.state !== CARD_STATES.LEARNING) return false;
-        if (!card.nextReviewDate) return false;
-        return new Date(card.nextReviewDate) <= now;
-    });
-
-    // Step 2: Review cards — due and cap
-    const reviewCardsDue = allVocabulary.filter(card => {
-        if (card.state !== CARD_STATES.REVIEW && card.state !== CARD_STATES.LAPSED) return false;
-        if (!card.nextReviewDate) return false;
-        return new Date(card.nextReviewDate) <= now;
-    }).slice(0, REVIEW_CARDS_PER_DAY);
-
-    // Step 3: New cards — limit daily
-    const todaysNewCardsSeen = allVocabulary.filter(card => {
-        if (card.state !== CARD_STATES.NEW) return false;
-        if (!card.lastReviewed) return false;
-        return new Date(card.lastReviewed).toDateString() === today;
-    }).length;
-
-    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
-
-    const newCards = allVocabulary
-        .filter(card => card.state === CARD_STATES.NEW && !card.lastReviewed)
-        .slice(0, remainingNewCards);
-
-    console.log('Study Session Info:', {
-        learningCards: learningCards.length,
-        reviewCardsDue: reviewCardsDue.length,
-        newCards: newCards.length,
-    });
-
-    // Step 4: Combine
-    return [...learningCards, ...shuffle([...reviewCardsDue, ...newCards])];
-};
-
+            // Get cards due for review
+            const getCardsForStudy = () => {
+                const now = new Date();
+                const dueCards = allVocabulary.filter(card => {
+                    if (!card.nextReviewDate) return true; // New cards
+                    return new Date(card.nextReviewDate) <= now;
+                });
+                
+                // Sort by priority: overdue cards first, then new cards
+                return dueCards.sort((a, b) => {
+                    const aDate = a.nextReviewDate ? new Date(a.nextReviewDate) : new Date(0);
+                    const bDate = b.nextReviewDate ? new Date(b.nextReviewDate) : new Date(0);
+                    return aDate - bDate;
+                });
+            };
 
             // Update card after review
-const updateCardProgress = (cardIndex, difficulty) => {
-    const card = studyCards[cardIndex];
-    const originalIndex = allVocabulary.findIndex(c => 
-        c.czech === card.czech && c.english === card.english
-    );
-    
-    if (originalIndex === -1) return;
-    
-    const updatedCard = calculateNextReview(allVocabulary[originalIndex], difficulty);
-    
-    const updatedVocabulary = [...allVocabulary];
-    updatedVocabulary[originalIndex] = updatedCard;
-    setAllVocabulary(updatedVocabulary);
-    
-    // Update session stats
-    const difficultyMap = {
-        1: 'again',
-        2: 'hard', 
-        3: 'normal',
-        4: 'easy'
-    };
-    
-    setSessionStats(prev => ({
-        ...prev,
-        cardsStudied: prev.cardsStudied + 1,
-        [`${difficultyMap[difficulty]}Cards`]: prev[`${difficultyMap[difficulty]}Cards`] + 1,
-        newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
-        reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
-    }));
-    
-    // Auto-save updated vocabulary
-    setTimeout(() => {
-        saveToDatabase(updatedVocabulary);
-    }, 500);
-};
+            const updateCardProgress = (cardIndex, difficulty) => {
+                const card = studyCards[cardIndex];
+                const originalIndex = allVocabulary.findIndex(c => 
+                    c.czech === card.czech && c.english === card.english
+                );
+                
+                if (originalIndex === -1) return;
+                
+                const updatedCard = {
+                    ...allVocabulary[originalIndex],
+                    ...calculateNextReview(allVocabulary[originalIndex], difficulty)
+                };
+                
+                const updatedVocabulary = [...allVocabulary];
+                updatedVocabulary[originalIndex] = updatedCard;
+                setAllVocabulary(updatedVocabulary);
+                
+                // Update session stats
+
+                                    const difficultyMap = {
+                        1: 'again',
+                        3: 'hard', 
+                        4: 'normal',
+                        5: 'easy'
+                    };
+                    
+                    setSessionStats(prev => ({
+                        ...prev,
+                        cardsStudied: prev.cardsStudied + 1,
+                        [`${difficultyMap[difficulty]}Cards`]: prev[`${difficultyMap[difficulty]}Cards`] + 1,
+                        newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
+                        reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
+                    }));
+                    
+                
+                // Auto-save updated vocabulary
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
+            };
 
             // User management functions with Supabase
             const registerUser = async (email, password, username) => {
@@ -398,21 +279,12 @@ const updateCardProgress = (cardIndex, difficulty) => {
                     }
 
                     if (data && data.vocabulary) {
-    console.log('Loaded vocabulary:', data.vocabulary.length, 'cards');
-    const migratedVocabulary = migrateExistingCards(data.vocabulary);
-    setAllVocabulary(migratedVocabulary);
-    setLastSyncTime(new Date(data.updated_at));
-    
-    // Save migrated data if changes were made
-    if (JSON.stringify(migratedVocabulary) !== JSON.stringify(data.vocabulary)) {
-        console.log('Migrating existing cards to new format');
-        setTimeout(() => {
-            saveToDatabase(migratedVocabulary);
-        }, 1000);
-    }
-} else {
-    setAllVocabulary([]);
-}
+                        console.log('Loaded vocabulary:', data.vocabulary.length, 'cards');
+                        setAllVocabulary(data.vocabulary || []);
+                        setLastSyncTime(new Date(data.updated_at));
+                    } else {
+                        setAllVocabulary([]);
+                    }
                 } catch (error) {
                     console.error('Error loading vocabulary:', error);
                     setAllVocabulary([]);
@@ -550,28 +422,26 @@ const updateCardProgress = (cardIndex, difficulty) => {
 
             // Study functions
             const startStudySession = () => {
-    const dueCards = getCardsForStudy();
-    console.log('Cards available for study:', dueCards.length, dueCards);
-    
-    if (dueCards.length === 0) {
-        alert('No cards are due for review right now! Come back later or add more cards.');
-        return;
-    }
-    
-    setStudyCards(dueCards);
-    setCurrentCardIndex(0);
-    setShowAnswer(false);
-    setSessionStats({
-        cardsStudied: 0,
-        newCards: 0,
-        reviewCards: 0,
-        againCards: 0,
-        easyCards: 0,
-        normalCards: 0,
-        hardCards: 0
-    });
-    setCurrentScreen('study');
-};
+                const dueCards = getCardsForStudy();
+                if (dueCards.length === 0) {
+                    alert('No cards are due for review right now! Come back later or add more cards.');
+                    return;
+                }
+                
+                setStudyCards(dueCards);
+                setCurrentCardIndex(0);
+                setShowAnswer(false);
+                setSessionStats({
+                    cardsStudied: 0,
+                    newCards: 0,
+                    reviewCards: 0,
+                    againCards: 0,
+                    easyCards: 0,
+                    normalCards: 0,
+                    hardCards: 0
+                });
+                setCurrentScreen('study');
+            };
 
             const handleAnswer = (grade) => {
     updateCardProgress(currentCardIndex, grade);
@@ -750,22 +620,31 @@ const checkTypingAnswer = () => {
 };
 
             const addManualCard = (czech, english) => {
-    if (!czech.trim() || !english.trim()) {
-        alert('Please fill in both Czech and English fields');
-        return;
-    }
-    
-    const newCard = createNewCard(czech, english);
-    const updatedVocabulary = [...allVocabulary, newCard];
-    setAllVocabulary(updatedVocabulary);
-    setManualCzech('');
-    setManualEnglish('');
-    alert('Card added successfully!');
-    
-    setTimeout(() => {
-        saveToDatabase(updatedVocabulary);
-    }, 500);
-};
+                if (!czech.trim() || !english.trim()) {
+                    alert('Please fill in both Czech and English fields');
+                    return;
+                }
+                
+                const newCard = {
+                    czech: czech.trim(),
+                    english: english.trim(),
+                    consecutiveCorrect: 0,
+                    easeFactor: 2.5,
+                    interval: 1,
+                    nextReviewDate: new Date().toISOString(),
+                    lastReviewed: null
+                };
+                
+                const updatedVocabulary = [...allVocabulary, newCard];
+                setAllVocabulary(updatedVocabulary);
+                setManualCzech('');
+                setManualEnglish('');
+                alert('Card added successfully!');
+                
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
+            };
 
             const handleManualSubmit = (e) => {
                 e.preventDefault();
@@ -841,22 +720,29 @@ const checkTypingAnswer = () => {
             };
 
             const addCsvCardsToVocabulary = () => {
-    const validCards = csvCards.filter((card, index) => {
-        const validation = csvValidationResults[index];
-        return !validation || validation.isValid || card.manuallyApproved;
-    }).map(card => createNewCard(card.czech, card.english));
-    
-    const updatedVocabulary = [...allVocabulary, ...validCards];
-    setAllVocabulary(updatedVocabulary);
-    setCsvCards([]);
-    setCsvValidationResults([]);
-    setCurrentScreen('home');
-    alert(`Added ${validCards.length} new cards from CSV to your vocabulary!`);
-    
-    setTimeout(() => {
-        saveToDatabase(updatedVocabulary);
-    }, 500);
-};
+                const validCards = csvCards.filter((card, index) => {
+                    const validation = csvValidationResults[index];
+                    return !validation || validation.isValid || card.manuallyApproved;
+                }).map(card => ({
+                    ...card,
+                    consecutiveCorrect: 0,
+                    easeFactor: 2.5,
+                    interval: 1,
+                    nextReviewDate: new Date().toISOString(),
+                    lastReviewed: null
+                }));
+                
+                const updatedVocabulary = [...allVocabulary, ...validCards];
+                setAllVocabulary(updatedVocabulary);
+                setCsvCards([]);
+                setCsvValidationResults([]);
+                setCurrentScreen('home');
+                alert(`Added ${validCards.length} new cards from CSV to your vocabulary!`);
+                
+                setTimeout(() => {
+                    saveToDatabase(updatedVocabulary);
+                }, 500);
+            };
 
             const approveCsvCard = (index) => {
                 const updated = [...csvCards];
@@ -921,8 +807,7 @@ const checkTypingAnswer = () => {
                             setTimeout(() => reject(new Error('Session check timeout')), 10000)
                         );
                         
-                        const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
-const session = data?.session;
+                        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
                         
                         if (error) {
                             console.error('Session check error:', error);
@@ -980,9 +865,7 @@ const session = data?.session;
 
                 return () => {
                     clearTimeout(timer);
-                    if (subscription) {
-    subscription.unsubscribe();
-}
+                    subscription?.unsubscribe();
                 };
             }, []);
 
@@ -998,44 +881,14 @@ const session = data?.session;
 
             const currentCard = studyCards[currentCardIndex];
 
-            
-// Helper function to get due cards count
-const getDueCardsCount = () => {
-    const now = new Date();
-    const today = now.toDateString();
-    
-    // Count learning and review cards that are due
-    const dueCards = allVocabulary.filter(card => {
-        if (!card.nextReviewDate) return false;
-        return new Date(card.nextReviewDate) <= now;
-    });
-    
-    // Count new cards (limited by daily limit)
-    const newCardsSeenToday = allVocabulary.filter(card => {
-        if (!card.lastReviewed) return false;
-        return new Date(card.lastReviewed).toDateString() === today;
-    });
-    
-    const newCardsAvailable = allVocabulary.filter(card => 
-        card.state === CARD_STATES.NEW || (!card.nextReviewDate && !card.lastReviewed)
-    );
-    
-    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - newCardsSeenToday.length);
-    const newCardsDueToday = Math.min(newCardsAvailable.length, remainingNewCards);
-    
-    // Debug logging
-    console.log('Due cards debug:', {
-        totalCards: allVocabulary.length,
-        dueCardsCount: dueCards.length,
-        newCardsAvailable: newCardsAvailable.length,
-        newCardsSeenToday: newCardsSeenToday.length,
-        remainingNewCards,
-        newCardsDueToday,
-        finalCount: dueCards.length + newCardsDueToday
-    });
-    
-    return dueCards.length + newCardsDueToday;
-};
+            // Helper function to get due cards count
+            const getDueCardsCount = () => {
+                const now = new Date();
+                return allVocabulary.filter(card => {
+                    if (!card.nextReviewDate) return true;
+                    return new Date(card.nextReviewDate) <= now;
+                }).length;
+            };
 
             // Helper function to calculate next interval for display
             const getNextInterval = (card, grade) => {
@@ -1179,42 +1032,9 @@ const getDueCardsCount = () => {
 
             // Home Screen
 if (currentScreen === 'home') {
-    const dueCards = getDueCardsCount(); // ADD THIS LINE
-    // Use the same logic as getCardsForStudy for consistency
-const now = new Date();
-const today = now.toDateString();
-
-// Learning cards that are due
-const learningCount = allVocabulary.filter(card => {
-    if (card.state !== CARD_STATES.LEARNING) return false;
-    if (!card.nextReviewDate) return false;
-    return new Date(card.nextReviewDate) <= now;
-}).length;
-
-// Review cards that are due (capped at daily limit)
-const reviewCardsDue = allVocabulary.filter(card => {
-    if (card.state !== CARD_STATES.REVIEW && card.state !== CARD_STATES.LAPSED) return false;
-    if (!card.nextReviewDate) return false;
-    return new Date(card.nextReviewDate) <= now;
-});
-const reviewCount = Math.min(reviewCardsDue.length, REVIEW_CARDS_PER_DAY);
-
-// New cards calculation (same as getDueCardsCount)
-const todaysNewCardsSeen = allVocabulary.filter(card => {
-    if (!card.lastReviewed) return false;
-    return new Date(card.lastReviewed).toDateString() === today;
-}).length;
-
-const newCardsAvailable = allVocabulary.filter(card => 
-    card.state === CARD_STATES.NEW || (!card.nextReviewDate && !card.lastReviewed)
-);
-
-const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
-const newCardsDueToday = Math.min(newCardsAvailable.length, remainingNewCards);
-
-// Total due cards (should match dueCards variable)
-const totalDueCards = learningCount + reviewCount + newCardsDueToday;
-
+    const dueCards = getDueCardsCount();
+    const newCardsCount = allVocabulary.filter(card => !card.lastReviewed).length;
+    const reviewCardsCount = allVocabulary.filter(card => card.lastReviewed && new Date(card.nextReviewDate) <= new Date()).length;
     
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
@@ -1245,19 +1065,20 @@ const totalDueCards = learningCount + reviewCount + newCardsDueToday;
                             <div className="text-sm text-gray-600">Total Cards</div>
                         </div>
                         <div className="bg-orange-50 p-4 rounded-xl">
-                            <div className="text-2xl font-bold text-orange-600">{totalDueCards}</div>
-<div className="text-sm text-gray-600">Due Today</div>
-
+                            <div className="text-2xl font-bold text-orange-600">{dueCards}</div>
+                            <div className="text-sm text-gray-600">Due Today</div>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-green-50 p-4 rounded-xl">
-                            <div className="text-2xl font-bold text-green-600">{newCardsDueToday}</div>
-<div className="text-sm text-gray-600">New Today</div>
-
+                            <div className="text-xl font-bold text-green-600">{newCardsCount}</div>
+                            <div className="text-sm text-gray-600">New</div>
                         </div>
-                        
+                        <div className="bg-purple-50 p-4 rounded-xl">
+                            <div className="text-xl font-bold text-purple-600">{reviewCardsCount}</div>
+                            <div className="text-sm text-gray-600">Review</div>
+                        </div>
                     </div>
 
                     {allVocabulary.length === 0 && !isSyncing && (
@@ -1604,23 +1425,23 @@ const totalDueCards = learningCount + reviewCount + newCardsDueToday;
         Again ({getNextInterval(currentCard, 1)}d)
     </button>
     <button
-    onClick={() => handleAnswer(2)}
-    className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors"
->
-    Hard ({getNextInterval(currentCard, 2)}d)
-</button>
-<button
-    onClick={() => handleAnswer(3)}
-    className="w-full bg-green-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
->
-    Good ({getNextInterval(currentCard, 3)}d)
-</button>
-<button
-    onClick={() => handleAnswer(4)}
-    className="w-full bg-blue-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors"
->
-    Easy ({getNextInterval(currentCard, 4)}d)
-</button>
+        onClick={() => handleAnswer(3)}
+        className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors"
+    >
+        Hard ({getNextInterval(currentCard, 3)}d)
+    </button>
+    <button
+        onClick={() => handleAnswer(4)}
+        className="w-full bg-green-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-green-600 transition-colors"
+    >
+        Good ({getNextInterval(currentCard, 4)}d)
+    </button>
+    <button
+        onClick={() => handleAnswer(5)}
+        className="w-full bg-blue-500 text-white py-3 px-6 rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors"
+    >
+        Easy ({getNextInterval(currentCard, 5)}d)
+    </button>
 </div>
                             )}
                         </div>
