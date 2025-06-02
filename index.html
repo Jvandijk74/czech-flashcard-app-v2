@@ -527,26 +527,28 @@ const updateCardProgress = (cardIndex, difficulty) => {
 
             // Study functions
             const startStudySession = () => {
-                const dueCards = getCardsForStudy();
-                if (dueCards.length === 0) {
-                    alert('No cards are due for review right now! Come back later or add more cards.');
-                    return;
-                }
-                
-                setStudyCards(dueCards);
-                setCurrentCardIndex(0);
-                setShowAnswer(false);
-                setSessionStats({
-                    cardsStudied: 0,
-                    newCards: 0,
-                    reviewCards: 0,
-                    againCards: 0,
-                    easyCards: 0,
-                    normalCards: 0,
-                    hardCards: 0
-                });
-                setCurrentScreen('study');
-            };
+    const dueCards = getCardsForStudy();
+    console.log('Cards available for study:', dueCards.length, dueCards);
+    
+    if (dueCards.length === 0) {
+        alert('No cards are due for review right now! Come back later or add more cards.');
+        return;
+    }
+    
+    setStudyCards(dueCards);
+    setCurrentCardIndex(0);
+    setShowAnswer(false);
+    setSessionStats({
+        cardsStudied: 0,
+        newCards: 0,
+        reviewCards: 0,
+        againCards: 0,
+        easyCards: 0,
+        normalCards: 0,
+        hardCards: 0
+    });
+    setCurrentScreen('study');
+};
 
             const handleAnswer = (grade) => {
     updateCardProgress(currentCardIndex, grade);
@@ -970,7 +972,8 @@ const checkTypingAnswer = () => {
 
             const currentCard = studyCards[currentCardIndex];
 
-            // Helper function to get due cards count
+            
+// Helper function to get due cards count
 const getDueCardsCount = () => {
     const now = new Date();
     const today = now.toDateString();
@@ -979,22 +982,33 @@ const getDueCardsCount = () => {
     const dueCards = allVocabulary.filter(card => {
         if (!card.nextReviewDate) return false;
         return new Date(card.nextReviewDate) <= now;
-    }).length;
+    });
     
     // Count new cards (limited by daily limit)
     const newCardsSeenToday = allVocabulary.filter(card => {
         if (!card.lastReviewed) return false;
         return new Date(card.lastReviewed).toDateString() === today;
-    }).length;
+    });
     
     const newCardsAvailable = allVocabulary.filter(card => 
         card.state === CARD_STATES.NEW || (!card.nextReviewDate && !card.lastReviewed)
-    ).length;
+    );
     
-    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - newCardsSeenToday);
-    const newCardsDueToday = Math.min(newCardsAvailable, remainingNewCards);
+    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - newCardsSeenToday.length);
+    const newCardsDueToday = Math.min(newCardsAvailable.length, remainingNewCards);
     
-    return dueCards + newCardsDueToday;
+    // Debug logging
+    console.log('Due cards debug:', {
+        totalCards: allVocabulary.length,
+        dueCardsCount: dueCards.length,
+        newCardsAvailable: newCardsAvailable.length,
+        newCardsSeenToday: newCardsSeenToday.length,
+        remainingNewCards,
+        newCardsDueToday,
+        finalCount: dueCards.length + newCardsDueToday
+    });
+    
+    return dueCards.length + newCardsDueToday;
 };
 
             // Helper function to calculate next interval for display
