@@ -38,7 +38,8 @@ const CARD_STATES = {
 const LEARNING_STEPS = [1, 10]; // minutes
 const GRADUATING_INTERVAL = 1; // days
 const NEW_CARDS_PER_DAY = 20; // Daily limit for new cards
-
+const REVIEW_CARDS_PER_DAY = 100; // Daily limit for review cards (recommended value)
+        
 // Initialize a new card with proper structure
 const createNewCard = (czech, english) => {
     return {
@@ -75,6 +76,19 @@ const migrateExistingCards = (vocabulary) => {
         return card;
     });
 };
+
+        // Shuffle Helper
+function shuffle(array) {
+    let currentIndex = array.length, randomIndex;
+
+    while (currentIndex !== 0) {
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex--;
+        [array[currentIndex], array[randomIndex]] = [
+            array[randomIndex], array[currentIndex]];
+    }
+    return array;
+}
 
 const CzechFlashcardApp = () => {
             // All state variables
@@ -203,36 +217,45 @@ const calculateNextReview = (card, grade) => {
             // Get cards for today's study session
 const getCardsForStudy = () => {
     const now = new Date();
-    
-    // Get due learning and review cards
-    const dueCards = allVocabulary.filter(card => {
-        if (!card.nextReviewDate) return false; // Don't include new cards here
+    const today = now.toDateString();
+
+    // Step 1: Learning cards — always show
+    const learningCards = allVocabulary.filter(card => {
+        if (card.state !== CARD_STATES.LEARNING) return false;
+        if (!card.nextReviewDate) return false;
         return new Date(card.nextReviewDate) <= now;
     });
-    
-    // Get new cards (limited by daily limit)
-    const newCards = allVocabulary
-        .filter(card => (card.state === CARD_STATES.NEW || !card.nextReviewDate))
-        .slice(0, NEW_CARDS_PER_DAY);
-    
-    // Check how many new cards were already seen today
-    const today = now.toDateString();
-    const newCardsSeenToday = allVocabulary.filter(card => {
+
+    // Step 2: Review cards — due and cap
+    const reviewCardsDue = allVocabulary.filter(card => {
+        if (card.state !== CARD_STATES.REVIEW && card.state !== CARD_STATES.LAPSED) return false;
+        if (!card.nextReviewDate) return false;
+        return new Date(card.nextReviewDate) <= now;
+    }).slice(0, REVIEW_CARDS_PER_DAY);
+
+    // Step 3: New cards — limit daily
+    const todaysNewCardsSeen = allVocabulary.filter(card => {
+        if (card.state !== CARD_STATES.NEW) return false;
         if (!card.lastReviewed) return false;
-        return new Date(card.lastReviewed).toDateString() === today && 
-               (card.state === CARD_STATES.LEARNING || card.state === CARD_STATES.REVIEW);
+        return new Date(card.lastReviewed).toDateString() === today;
     }).length;
-    
-    // Limit new cards based on daily limit
-    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - newCardsSeenToday);
-    const todaysNewCards = newCards.slice(0, remainingNewCards);
-    
-    // Prioritize: Learning cards first, then review cards, then new cards
-    const learningCards = dueCards.filter(card => card.state === CARD_STATES.LEARNING);
-    const reviewCards = dueCards.filter(card => card.state === CARD_STATES.REVIEW);
-    
-    return [...learningCards, ...reviewCards, ...todaysNewCards];
+
+    const remainingNewCards = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
+
+    const newCards = allVocabulary
+        .filter(card => card.state === CARD_STATES.NEW && !card.lastReviewed)
+        .slice(0, remainingNewCards);
+
+    console.log('Study Session Info:', {
+        learningCards: learningCards.length,
+        reviewCardsDue: reviewCardsDue.length,
+        newCards: newCards.length,
+    });
+
+    // Step 4: Combine
+    return [...learningCards, ...shuffle([...reviewCardsDue, ...newCards])];
 };
+
 
             // Update card after review
 const updateCardProgress = (cardIndex, difficulty) => {
@@ -1153,9 +1176,26 @@ const getDueCardsCount = () => {
 
             // Home Screen
 if (currentScreen === 'home') {
-    const dueCards = getDueCardsCount();
-    const newCardsCount = allVocabulary.filter(card => !card.lastReviewed).length;
-    const reviewCardsCount = allVocabulary.filter(card => card.lastReviewed && new Date(card.nextReviewDate) <= new Date()).length;
+    const learningCount = allVocabulary.filter(card => 
+    card.state === CARD_STATES.LEARNING && 
+    card.nextReviewDate && 
+    new Date(card.nextReviewDate) <= new Date()
+).length;
+
+const reviewCount = allVocabulary.filter(card => 
+    (card.state === CARD_STATES.REVIEW || card.state === CARD_STATES.LAPSED) &&
+    card.nextReviewDate &&
+    new Date(card.nextReviewDate) <= new Date()
+).length;
+
+const todaysNewCardsSeen = allVocabulary.filter(card => {
+    return card.state === CARD_STATES.NEW &&
+        card.lastReviewed &&
+        new Date(card.lastReviewed).toDateString() === (new Date()).toDateString();
+}).length;
+
+const newCardsAvailable = Math.max(0, NEW_CARDS_PER_DAY - todaysNewCardsSeen);
+
     
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
@@ -1186,15 +1226,17 @@ if (currentScreen === 'home') {
                             <div className="text-sm text-gray-600">Total Cards</div>
                         </div>
                         <div className="bg-orange-50 p-4 rounded-xl">
-                            <div className="text-2xl font-bold text-orange-600">{dueCards}</div>
-                            <div className="text-sm text-gray-600">Due Today</div>
+                            <div className="text-2xl font-bold text-orange-600">{learningCount + reviewCount}</div>
+<div className="text-sm text-gray-600">Due Today</div>
+
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-green-50 p-4 rounded-xl">
-                            <div className="text-xl font-bold text-green-600">{newCardsCount}</div>
-                            <div className="text-sm text-gray-600">New</div>
+                            <div className="text-2xl font-bold text-green-600">{newCardsAvailable}</div>
+<div className="text-sm text-gray-600">New Today</div>
+
                         </div>
                         <div className="bg-purple-50 p-4 rounded-xl">
                             <div className="text-xl font-bold text-purple-600">{reviewCardsCount}</div>
