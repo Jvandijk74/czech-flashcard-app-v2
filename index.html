@@ -910,6 +910,16 @@ const checkTypingAnswer = () => {
         }
     }
 };
+            // Debug logging
+    console.log('Due cards debug:', {
+        totalCards: allVocabulary.length,
+        dueCardsCount: dueCards.length,
+        newCardsAvailable: newCardsAvailable.length,
+        newCardsSeenToday: newCardsSeenToday.length,
+        remainingNewCards,
+        newCardsDueToday,
+        finalCount: dueCards.length + newCardsDueToday
+    });
 
             // Login Screen
             if (!isLoggedIn) {
