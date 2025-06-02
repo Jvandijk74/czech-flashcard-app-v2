@@ -349,6 +349,40 @@
                 }
             };
 
+            const submitFeedback = async () => {
+    if (!feedbackText.trim()) {
+        alert('Please enter your feedback before submitting.');
+        return;
+    }
+
+    try {
+        const { error } = await supabaseClient.from('user_feedback').insert([
+            {
+                user_id: currentUser.id,
+                user_email: currentUser.email,
+                username: currentUser.user_metadata.username || currentUser.email.split('@')[0],
+                feedback_text: feedbackText.trim(),
+                feedback_type: feedbackType,
+                created_at: new Date().toISOString()
+            }
+        ]);
+
+        if (error) {
+            console.error('Feedback submission error:', error);
+            alert('Failed to submit feedback. Please try again.');
+        } else {
+            alert('🎉 Thank you for your feedback!');
+            setFeedbackText('');
+            setFeedbackType('');
+            setCurrentScreen('home');
+        }
+    } catch (error) {
+        console.error('Unexpected error:', error);
+        alert('Unexpected error. Please try again.');
+    }
+};
+
+
             const handleLogin = async (e) => {
                 e.preventDefault();
                 if (!email.trim() || !password.trim()) {
@@ -1149,6 +1183,16 @@ if (currentScreen === 'home') {
     <div className="font-bold text-lg mb-1">Add Cards</div>
     <div className="text-xs opacity-80">Manual or CSV import</div>
 </div>
+            {/* Feedback Block */}
+<div 
+    onClick={() => setCurrentScreen('feedback')}
+    className="bg-gradient-to-br from-pink-500 to-red-500 rounded-xl p-4 text-white cursor-pointer transform transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+>
+    <div className="text-3xl mb-2">📝</div>
+    <div className="font-bold text-lg mb-1">Give Feedback</div>
+    <div className="text-xs opacity-80">Help us improve</div>
+</div>
+
         </div>
     </div>
 ) : (
