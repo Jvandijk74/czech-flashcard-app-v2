@@ -2042,18 +2042,18 @@ if (currentScreen === 'feedback') {
                             Feedback Type
                         </label>
                         <select
-                            value={feedbackType}
-                            onChange={(e) => setFeedbackType(e.target.value)}
-                            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
-                            required
-                        >
-                            <option value="">Select type...</option>
-                            <option value="bug">🐞 Bug</option>
-<option value="suggestion">💡 Suggestion</option>
-<option value="praise">🎉 Praise</option>
-<option value="other">❓ Other</option>
+    value={feedbackType}
+    onChange={(e) => setFeedbackType(e.target.value)}
+    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+    required
+>
+    <option value="">Select type...</option>
+    <option value="bug">🐞 Bug</option>
+    <option value="suggestion">💡 Suggestion</option>
+    <option value="praise">🎉 Praise</option>
+    <option value="other">❓ Other</option>
+</select>
 
-                        </select>
                     </div>
 
                     <div className="flex gap-4">
