@@ -97,65 +97,6 @@ const createLogger = (component) => {
             const [feedbackText, setFeedbackText] = useState('');
             const [feedbackType, setFeedbackType] = useState('');
             const logger = createLogger('CzechFlashcardApp');
-
-// Enhanced card statistics logging function
-const logCardStatistics = (context = 'general') => {
-    const now = new Date();
-    
-    // Calculate all the card statistics
-    const totalCards = allVocabulary.length;
-    const newCards = allVocabulary.filter(card => !card.lastReviewed).length;
-    const reviewCards = allVocabulary.filter(card => 
-        card.lastReviewed && 
-        card.nextReviewDate && 
-        new Date(card.nextReviewDate) <= now
-    ).length;
-    const dueToday = newCards + reviewCards;
-    const futureCards = allVocabulary.filter(card => 
-        card.lastReviewed && 
-        card.nextReviewDate && 
-        new Date(card.nextReviewDate) > now
-    ).length;
-    
-    // Calculate average ease factor and interval for studied cards
-    const studiedCards = allVocabulary.filter(card => card.lastReviewed);
-    const avgEaseFactor = studiedCards.length > 0 
-        ? (studiedCards.reduce((sum, card) => sum + (card.easeFactor || 2.5), 0) / studiedCards.length).toFixed(2)
-        : 0;
-    const avgInterval = studiedCards.length > 0
-        ? Math.round(studiedCards.reduce((sum, card) => sum + (card.interval || 1), 0) / studiedCards.length)
-        : 0;
-    
-    // Active recall statistics
-    const cardsWithActiveRecall = allVocabulary.filter(card => card.activeRecallPerformance?.attempts > 0);
-    const totalActiveRecallAttempts = cardsWithActiveRecall.reduce((sum, card) => 
-        sum + (card.activeRecallPerformance?.attempts || 0), 0);
-    const totalActiveRecallCorrect = cardsWithActiveRecall.reduce((sum, card) => 
-        sum + (card.activeRecallPerformance?.correct || 0), 0);
-    const avgActiveRecallAccuracy = totalActiveRecallAttempts > 0 
-        ? ((totalActiveRecallCorrect / totalActiveRecallAttempts) * 100).toFixed(1)
-        : 0;
-
-    const cardStats = {
-        context,
-        timestamp: now.toISOString(),
-        totalCards,
-        newCards,
-        reviewCards,
-        dueToday,
-        futureCards,
-        studiedCards: studiedCards.length,
-        avgEaseFactor: parseFloat(avgEaseFactor),
-        avgInterval,
-        cardsWithActiveRecall: cardsWithActiveRecall.length,
-        totalActiveRecallAttempts,
-        avgActiveRecallAccuracy: parseFloat(avgActiveRecallAccuracy)
-    };
-    
-    logger.info(`Card Statistics [${context}]`, cardStats);
-    return cardStats;
-};
-
 // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
 
 
@@ -408,10 +349,6 @@ const logCardStatistics = (context = 'general') => {
             setAllVocabulary(data.vocabulary || []);
             setLastSyncTime(new Date(data.updated_at));
             
-            // Log detailed statistics after loading
-            setTimeout(() => {
-                logCardStatistics('post-vocabulary-load');
-            }, 100);
         } else {
             logger.warn('No vocabulary data found');
             setAllVocabulary([]);
@@ -566,19 +503,7 @@ const logCardStatistics = (context = 'general') => {
             setUserId(user.id);
             setIsLoggedIn(true);
             setCurrentScreen('home');
-            
-            logger.info('User successfully logged in', {
-                userId: user.id,
-                email: user.email,
-                timestamp: new Date().toISOString()
-            });
-            
             await loadUserVocabulary(user);
-            
-            // Log statistics after everything is loaded
-            setTimeout(() => {
-                logCardStatistics('post-login');
-            }, 500);
         }
     }
 };
@@ -589,46 +514,16 @@ const logCardStatistics = (context = 'general') => {
 
             // Study functions
     const startStudySession = () => {
-    logger.trace('startStudySession');
     const maxNewCards = 20;
     const maxReviewCards = 100;
-    
-    // Log detailed statistics before starting
-    const preSessionStats = logCardStatistics('pre-study-session');
-    
     const dueCards = getCardsForStudy(maxNewCards, maxReviewCards);
     
-    logger.info('Study session analysis', {
-        totalVocabulary: allVocabulary.length,
-        dueCards: dueCards.length,
-        maxNewCards,
-        maxReviewCards,
-        newCardsAvailable: preSessionStats.newCards,
-        reviewCardsAvailable: preSessionStats.reviewCards,
-        studySessionWillInclude: {
-            newCards: Math.min(preSessionStats.newCards, maxNewCards),
-            reviewCards: Math.min(preSessionStats.reviewCards, maxReviewCards)
-        }
-    });
-    
     if (dueCards.length === 0) {
-        logger.warn('No cards due for study', {
-            totalCards: preSessionStats.totalCards,
-            newCards: preSessionStats.newCards,
-            reviewCards: preSessionStats.reviewCards,
-            futureCards: preSessionStats.futureCards
-        });
         alert('No cards are due for review right now! Come back later or add more cards.');
         return;
     }
     
-    logger.info('Starting study session', { 
-        cardCount: dueCards.length,
-        sessionBreakdown: {
-            newCards: dueCards.filter(card => !card.lastReviewed).length,
-            reviewCards: dueCards.filter(card => card.lastReviewed).length
-        }
-    });
+    logger.info('Starting study session', { cardCount: dueCards.length });
     
     setStudyCards(dueCards);
     setCurrentCardIndex(0);
@@ -733,21 +628,7 @@ const getSmartActiveRecallCards = (mode, maxCards = 20) => {
 
 // Enhanced typing recall game starter
 const startTypingRecallGame = (mode) => {
-    const preGameStats = logCardStatistics('pre-active-recall');
-    
     const smartCards = getSmartActiveRecallCards(mode, 20);
-    
-    logger.info('Starting active recall session', {
-        mode,
-        selectedCards: smartCards.length,
-        totalAvailable: allVocabulary.length,
-        gameBreakdown: {
-            newCards: smartCards.filter(card => !card.lastReviewed).length,
-            studiedCards: smartCards.filter(card => card.lastReviewed).length,
-            difficultWords: smartCards.filter(card => difficultWords.has(card.czech + '|' + card.english)).length
-        }
-    });
-    
     setTypingGameCards(smartCards);
     setTypingCurrentIndex(0);
     setUserInput('');
@@ -761,6 +642,7 @@ const startTypingRecallGame = (mode) => {
     setSessionWrongCards([]);
     setCurrentScreen('typingRecall');
 };
+
 
 // Performance tracking function
 const updateActiveRecallPerformance = (card, correct) => {
