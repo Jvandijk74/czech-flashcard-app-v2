@@ -21,6 +21,28 @@
         const { useState, useEffect, useRef } = React;
         const { createClient } = supabase;
 
+        // Enhanced logging system
+const createLogger = (component) => {
+    const formatMessage = (level, message, data = null) => {
+        const timestamp = new Date().toISOString();
+        const prefix = `[${timestamp}] [${component}] [${level.toUpperCase()}]`;
+        
+        if (data) {
+            console.log(`${prefix} ${message}`, data);
+        } else {
+            console.log(`${prefix} ${message}`);
+        }
+    };
+
+    return {
+        info: (message, data) => formatMessage('info', message, data),
+        warn: (message, data) => formatMessage('warn', message, data),
+        error: (message, data) => formatMessage('error', message, data),
+        debug: (message, data) => formatMessage('debug', message, data),
+        trace: (functionName, params) => formatMessage('trace', `Entering ${functionName}`, params)
+    };
+};
+
         // Supabase credentials
         const supabaseUrl = 'https://luydswutvsttbpvruylm.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1eWRzd3V0dnN0dGJwdnJ1eWxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MDQzMjgsImV4cCI6MjA2NDE4MDMyOH0.RvrljR2_T4oDCWkyrvCxPSRc7aiUYflzQ8sX_cU-urI';
@@ -74,6 +96,41 @@
             const [sessionWrongCards, setSessionWrongCards] = useState([]);
             const [feedbackText, setFeedbackText] = useState('');
             const [feedbackType, setFeedbackType] = useState('');
+            const registerUser = async (email, password, username) => {
+    logger.trace('registerUser', { email, username });
+    try {
+        setIsLoading(true);
+        setConnectionError(null);
+        logger.info('Starting user registration', { email, username });
+        
+        const { data, error } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    username: username
+                }
+            }
+        });
+
+        if (error) {
+            logger.error('Registration failed', { error: error.message, code: error.status });
+            setConnectionError(`Registration failed: ${error.message}`);
+            return false;
+        }
+
+        logger.info('Registration successful', { userId: data.user?.id, email });
+        alert('Registration successful! Please check your email to verify your account, then sign in.');
+        return true;
+    } catch (error) {
+        logger.error('Registration exception', { error: error.message, stack: error.stack });
+        setConnectionError('Registration failed. Please check your internet connection and try again.');
+        return false;
+    } finally {
+        setIsLoading(false);
+        logger.debug('Registration process completed');
+    }
+};
 
 
 
@@ -259,6 +316,36 @@
                 }
             };
 
+            const loginUser = async (email, password) => {
+    logger.trace('loginUser', { email });
+    try {
+        setIsLoading(true);
+        setConnectionError(null);
+        logger.info('Starting user login', { email });
+        
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (error) {
+            logger.error('Login failed', { error: error.message, code: error.status });
+            setConnectionError(`Login failed: ${error.message}`);
+            return false;
+        }
+
+        logger.info('Login successful', { userId: data.user?.id, email: data.user?.email });
+        return data.user;
+    } catch (error) {
+        logger.error('Login exception', { error: error.message, stack: error.stack });
+        setConnectionError('Login failed. Please check your internet connection and try again.');
+        return false;
+    } finally {
+        setIsLoading(false);
+        logger.debug('Login process completed');
+    }
+};
+
             const logoutUser = async () => {
                 try {
                     await supabaseClient.auth.signOut();
@@ -276,103 +363,137 @@
             };
 
             const loadUserVocabulary = async (user) => {
-                try {
-                    setIsLoading(true);
-                    console.log('Loading vocabulary for user:', user.id);
-                    
-                    const { data, error } = await supabaseClient
-                        .from('user_vocabulary')
-                        .select('vocabulary, updated_at')
-                        .eq('user_id', user.id)
-                        .single();
+    logger.trace('loadUserVocabulary', { userId: user?.id });
+    try {
+        setIsLoading(true);
+        logger.info('Loading vocabulary for user', { userId: user.id, email: user.email });
+        
+        const { data, error } = await supabaseClient
+            .from('user_vocabulary')
+            .select('vocabulary, updated_at')
+            .eq('user_id', user.id)
+            .single();
 
-                    if (error) {
-                        console.error('Error loading vocabulary:', error);
-                        
-                        if (error.code === 'PGRST116') { 
-                            console.log('No vocabulary found, creating initial record');
-                            await saveToDatabase([]);
-                            setAllVocabulary([]);
-                        } else if (error.code === '42501') {
-                            alert('Permission denied. Please check your account access.');
-                            setAllVocabulary([]);
-                        } else {
-                            console.error('Database error:', error.message);
-                            setAllVocabulary([]);
-                        }
-                        return;
-                    }
+        if (error) {
+            logger.error('Error loading vocabulary', { 
+                error: error.message, 
+                code: error.code, 
+                userId: user.id 
+            });
+            
+            if (error.code === 'PGRST116') { 
+                logger.info('No vocabulary found, creating initial record');
+                await saveToDatabase([]);
+                setAllVocabulary([]);
+            } else if (error.code === '42501') {
+                logger.error('Permission denied for vocabulary access');
+                alert('Permission denied. Please check your account access.');
+                setAllVocabulary([]);
+            } else {
+                logger.error('Database error during vocabulary load', { error: error.message });
+                setAllVocabulary([]);
+            }
+            return;
+        }
 
-                    if (data && data.vocabulary) {
-                        console.log('Loaded vocabulary:', data.vocabulary.length, 'cards');
-                        setAllVocabulary(data.vocabulary || []);
-                        setLastSyncTime(new Date(data.updated_at));
-                    } else {
-                        setAllVocabulary([]);
-                    }
-                } catch (error) {
-                    console.error('Error loading vocabulary:', error);
-                    setAllVocabulary([]);
-                } finally {
-                    setIsLoading(false);
-                }
-            };
-
+        if (data && data.vocabulary) {
+            logger.info('Successfully loaded vocabulary', { 
+                cardCount: data.vocabulary.length, 
+                lastUpdate: data.updated_at 
+            });
+            setAllVocabulary(data.vocabulary || []);
+            setLastSyncTime(new Date(data.updated_at));
+        } else {
+            logger.warn('No vocabulary data found');
+            setAllVocabulary([]);
+        }
+    } catch (error) {
+        logger.error('Exception during vocabulary load', { 
+            error: error.message, 
+            stack: error.stack 
+        });
+        setAllVocabulary([]);
+    } finally {
+        setIsLoading(false);
+        logger.debug('Vocabulary loading completed');
+    }
+};
             const saveToDatabase = async (vocabulary) => {
-                if (!currentUser || isSyncing) return;
-                
-                try {
-                    setIsSyncing(true);
-                    console.log('Saving vocabulary for user:', currentUser.id, 'Cards:', vocabulary.length);
-                    
-                    const { data, error } = await supabaseClient
-                        .from('user_vocabulary')
-                        .upsert({
-                            user_id: currentUser.id,
-                            vocabulary: vocabulary,
-                            updated_at: new Date().toISOString()
-                        }, {
-                            onConflict: 'user_id'
-                        });
+    if (!currentUser || isSyncing) {
+        logger.warn('Save blocked', { 
+            hasUser: !!currentUser, 
+            isSyncing, 
+            vocabularyLength: vocabulary?.length 
+        });
+        return;
+    }
+    
+    logger.trace('saveToDatabase', { userId: currentUser.id, cardCount: vocabulary.length });
+    
+    try {
+        setIsSyncing(true);
+        logger.info('Starting vocabulary save', { 
+            userId: currentUser.id, 
+            cardCount: vocabulary.length 
+        });
+        
+        const { data, error } = await supabaseClient
+            .from('user_vocabulary')
+            .upsert({
+                user_id: currentUser.id,
+                vocabulary: vocabulary,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            });
 
-                    if (error) {
-                        console.error('Error saving vocabulary:', error);
-                        
-                        if (error.code === '42501') {
-                            alert('Permission denied. Please check your account permissions.');
-                        } else if (error.code === '23505') {
-                            console.log('Trying update instead of upsert...');
-                            const { error: updateError } = await supabaseClient
-                                .from('user_vocabulary')
-                                .update({
-                                    vocabulary: vocabulary,
-                                    updated_at: new Date().toISOString()
-                                })
-                                .eq('user_id', currentUser.id);
-                                
-                            if (updateError) {
-                                console.error('Update also failed:', updateError);
-                                alert('Failed to save vocabulary. Please try again.');
-                            } else {
-                                setLastSyncTime(new Date());
-                                console.log('Successfully updated vocabulary');
-                            }
-                        } else {
-                            alert(`Failed to sync vocabulary: ${error.message}`);
-                        }
-                    } else {
-                        setLastSyncTime(new Date());
-                        console.log('Successfully synced vocabulary');
-                    }
-                } catch (error) {
-                    console.error('Error saving vocabulary:', error);
-                    alert('Sync failed due to network error. Please check your connection.');
-                } finally {
-                    setTimeout(() => {
-                        setIsSyncing(false);
-                    }, 1000);
+        if (error) {
+            logger.error('Save error', { 
+                error: error.message, 
+                code: error.code, 
+                userId: currentUser.id 
+            });
+            
+            if (error.code === '42501') {
+                logger.error('Permission denied during save');
+                alert('Permission denied. Please check your account permissions.');
+            } else if (error.code === '23505') {
+                logger.info('Conflict detected, trying update instead');
+                const { error: updateError } = await supabaseClient
+                    .from('user_vocabulary')
+                    .update({
+                        vocabulary: vocabulary,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('user_id', currentUser.id);
+                    
+                if (updateError) {
+                    logger.error('Update also failed', { error: updateError.message });
+                    alert('Failed to save vocabulary. Please try again.');
+                } else {
+                    setLastSyncTime(new Date());
+                    logger.info('Successfully updated vocabulary via fallback');
                 }
-            };
+            } else {
+                alert(`Failed to sync vocabulary: ${error.message}`);
+            }
+        } else {
+            setLastSyncTime(new Date());
+            logger.info('Successfully synced vocabulary', { cardCount: vocabulary.length });
+        }
+    } catch (error) {
+        logger.error('Exception during save', { 
+            error: error.message, 
+            stack: error.stack 
+        });
+        alert('Sync failed due to network error. Please check your connection.');
+    } finally {
+        setTimeout(() => {
+            setIsSyncing(false);
+            logger.debug('Save process completed');
+        }, 1000);
+    }
+};
 
             const submitFeedback = async () => {
     if (!feedbackText.trim()) {
@@ -447,18 +568,26 @@
 
             // Study functions
             const startStudySession = () => {
-    // You can adjust these limits based on user preferences
-    const maxNewCards = 20;     // Maximum new cards per day
-    const maxReviewCards = 100; // Maximum review cards per day
+    logger.trace('startStudySession');
+    const maxNewCards = 20;
+    const maxReviewCards = 100;
     
     const dueCards = getCardsForStudy(maxNewCards, maxReviewCards);
     
+    logger.info('Study session analysis', {
+        totalVocabulary: allVocabulary.length,
+        dueCards: dueCards.length,
+        maxNewCards,
+        maxReviewCards
+    });
+    
     if (dueCards.length === 0) {
+        logger.warn('No cards due for study');
         alert('No cards are due for review right now! Come back later or add more cards.');
         return;
     }
     
-    console.log(`Starting study session with ${dueCards.length} cards (Max new: ${maxNewCards}, Max review: ${maxReviewCards})`);
+    logger.info('Starting study session', { cardCount: dueCards.length });
     
     setStudyCards(dueCards);
     setCurrentCardIndex(0);
@@ -474,7 +603,6 @@
     });
     setCurrentScreen('study');
 };
-
             const handleAnswer = (grade) => {
     updateCardProgress(currentCardIndex, grade);
     
@@ -709,47 +837,55 @@ const checkTypingAnswer = () => {
             };
 
             const parseCsvText = (csvText) => {
-                console.log('Parsing CSV text:', csvText);
-                
-                const lines = csvText.split('\n').filter(line => line.trim());
-                const parsed = [];
-                const validationRes = [];
+    logger.trace('parseCsvText', { textLength: csvText.length });
+    
+    const lines = csvText.split('\n').filter(line => line.trim());
+    const parsed = [];
+    const validationRes = [];
+    
+    logger.info('Processing CSV', { totalLines: lines.length });
 
-                lines.forEach((line, index) => {
-                    if (index === 0 && (line.toLowerCase().includes('czech') || line.toLowerCase().includes('english'))) {
-                        return;
-                    }
+    lines.forEach((line, index) => {
+        if (index === 0 && (line.toLowerCase().includes('czech') || line.toLowerCase().includes('english'))) {
+            logger.debug('Skipping header line', { line });
+            return;
+        }
 
-                    let parts = [];
-                    if (line.includes(',')) {
-                        parts = line.split(',');
-                    } else if (line.includes(';')) {
-                        parts = line.split(';');
-                    } else if (line.includes('\t')) {
-                        parts = line.split('\t');
-                    }
+        let parts = [];
+        if (line.includes(',')) {
+            parts = line.split(',');
+        } else if (line.includes(';')) {
+            parts = line.split(';');
+        } else if (line.includes('\t')) {
+            parts = line.split('\t');
+        }
 
-                    if (parts.length >= 2 && parsed.length < 300) {
-                        let czech = parts[0].trim().replace(/^["'](.*)["']$/, '$1');
-                        let english = parts[1].trim().replace(/^["'](.*)["']$/, '$1');
+        if (parts.length >= 2 && parsed.length < 300) {
+            let czech = parts[0].trim().replace(/^["'](.*)["']$/, '$1');
+            let english = parts[1].trim().replace(/^["'](.*)["']$/, '$1');
 
-                        if (czech.length >= 2 && english.length >= 2) {
-                            const validation = validateCardPair(czech, english);
-                            parsed.push({ czech, english, id: index });
-                            validationRes.push(validation);
-                            console.log(`Found CSV pair: "${czech}" - "${english}"`);
-                        }
-                    }
-                });
+            if (czech.length >= 2 && english.length >= 2) {
+                const validation = validateCardPair(czech, english);
+                parsed.push({ czech, english, id: index });
+                validationRes.push(validation);
+                logger.debug('Found CSV pair', { index, czech, english, isValid: validation.isValid });
+            }
+        }
+    });
 
-                console.log(`Parsed ${parsed.length} CSV pairs`);
-                setCsvCards(parsed);
-                setCsvValidationResults(validationRes);
-                
-                if (parsed.length === 0) {
-                    alert(`No vocabulary pairs found in CSV. Make sure your CSV has this format:\n\nczech_word,english_word\ndobrý den,good day\nděkuji,thank you`);
-                }
-            };
+    logger.info('CSV parsing completed', { 
+        parsedCount: parsed.length, 
+        validCount: validationRes.filter(v => v.isValid).length 
+    });
+    
+    setCsvCards(parsed);
+    setCsvValidationResults(validationRes);
+    
+    if (parsed.length === 0) {
+        logger.warn('No valid vocabulary pairs found in CSV');
+        alert(`No vocabulary pairs found in CSV. Make sure your CSV has this format:\n\nczech_word,english_word\ndobrý den,good day\nděkuji,thank you`);
+    }
+};
 
             const addCsvCardsToVocabulary = () => {
                 const validCards = csvCards.filter((card, index) => {
