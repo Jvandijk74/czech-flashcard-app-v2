@@ -96,42 +96,7 @@ const createLogger = (component) => {
             const [sessionWrongCards, setSessionWrongCards] = useState([]);
             const [feedbackText, setFeedbackText] = useState('');
             const [feedbackType, setFeedbackType] = useState('');
-            const registerUser = async (email, password, username) => {
-    logger.trace('registerUser', { email, username });
-    try {
-        setIsLoading(true);
-        setConnectionError(null);
-        logger.info('Starting user registration', { email, username });
-        
-        const { data, error } = await supabaseClient.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-                data: {
-                    username: username
-                }
-            }
-        });
-
-        if (error) {
-            logger.error('Registration failed', { error: error.message, code: error.status });
-            setConnectionError(`Registration failed: ${error.message}`);
-            return false;
-        }
-
-        logger.info('Registration successful', { userId: data.user?.id, email });
-        alert('Registration successful! Please check your email to verify your account, then sign in.');
-        return true;
-    } catch (error) {
-        logger.error('Registration exception', { error: error.message, stack: error.stack });
-        setConnectionError('Registration failed. Please check your internet connection and try again.');
-        return false;
-    } finally {
-        setIsLoading(false);
-        logger.debug('Registration process completed');
-    }
-};
-
+            
 
 
             // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
@@ -257,64 +222,6 @@ const createLogger = (component) => {
                 }, 500);
             };
 
-            // User management functions with Supabase
-            const registerUser = async (email, password, username) => {
-                try {
-                    setIsLoading(true);
-                    setConnectionError(null);
-                    
-                    const { data, error } = await supabaseClient.auth.signUp({
-                        email: email,
-                        password: password,
-                        options: {
-                            data: {
-                                username: username
-                            }
-                        }
-                    });
-
-                    if (error) {
-                        console.error('Registration error:', error);
-                        setConnectionError(`Registration failed: ${error.message}`);
-                        return false;
-                    }
-
-                    alert('Registration successful! Please check your email to verify your account, then sign in.');
-                    return true;
-                } catch (error) {
-                    console.error('Registration error:', error);
-                    setConnectionError('Registration failed. Please check your internet connection and try again.');
-                    return false;
-                } finally {
-                    setIsLoading(false);
-                }
-            };
-
-            const loginUser = async (email, password) => {
-                try {
-                    setIsLoading(true);
-                    setConnectionError(null);
-                    
-                    const { data, error } = await supabaseClient.auth.signInWithPassword({
-                        email: email,
-                        password: password
-                    });
-
-                    if (error) {
-                        console.error('Login error:', error);
-                        setConnectionError(`Login failed: ${error.message}`);
-                        return false;
-                    }
-
-                    return data.user;
-                } catch (error) {
-                    console.error('Login error:', error);
-                    setConnectionError('Login failed. Please check your internet connection and try again.');
-                    return false;
-                } finally {
-                    setIsLoading(false);
-                }
-            };
 
             const loginUser = async (email, password) => {
     logger.trace('loginUser', { email });
