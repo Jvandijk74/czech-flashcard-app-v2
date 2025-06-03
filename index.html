@@ -223,6 +223,7 @@ const createLogger = (component) => {
             };
 
 
+
             const loginUser = async (email, password) => {
     logger.trace('loginUser', { email });
     try {
@@ -250,6 +251,42 @@ const createLogger = (component) => {
     } finally {
         setIsLoading(false);
         logger.debug('Login process completed');
+    }
+};
+
+            const registerUser = async (email, password, username) => {
+    logger.trace('registerUser', { email, username });
+    try {
+        setIsLoading(true);
+        setConnectionError(null);
+        logger.info('Starting user registration', { email, username });
+        
+        const { data, error } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    username: username
+                }
+            }
+        });
+
+        if (error) {
+            logger.error('Registration failed', { error: error.message, code: error.status });
+            setConnectionError(`Registration failed: ${error.message}`);
+            return false;
+        }
+
+        logger.info('Registration successful', { userId: data.user?.id, email });
+        alert('Registration successful! Please check your email to verify your account, then sign in.');
+        return true;
+    } catch (error) {
+        logger.error('Registration exception', { error: error.message, stack: error.stack });
+        setConnectionError('Registration failed. Please check your internet connection and try again.');
+        return false;
+    } finally {
+        setIsLoading(false);
+        logger.debug('Registration process completed');
     }
 };
 
