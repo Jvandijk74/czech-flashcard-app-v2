@@ -96,7 +96,7 @@ const createLogger = (component) => {
             const [sessionWrongCards, setSessionWrongCards] = useState([]);
             const [feedbackText, setFeedbackText] = useState('');
             const [feedbackType, setFeedbackType] = useState('');
-            
+            const logger = createLogger('CzechFlashcardApp');
 
 
             // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
