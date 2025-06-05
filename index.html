@@ -182,46 +182,47 @@ const createLogger = (component) => {
 };
 
             // Update card after review
-            const updateCardProgress = (cardIndex, difficulty) => {
-                const card = studyCards[cardIndex];
-                const originalIndex = allVocabulary.findIndex(c => 
-                    c.czech === card.czech && c.english === card.english
-                );
-                
-                if (originalIndex === -1) return;
-                
-                const updatedCard = {
-                    ...allVocabulary[originalIndex],
-                    ...calculateNextReview(allVocabulary[originalIndex], difficulty)
-                };
-                
-                const updatedVocabulary = [...allVocabulary];
-                updatedVocabulary[originalIndex] = updatedCard;
-                setAllVocabulary(updatedVocabulary);
-                
-                // Update session stats
-
-                                    const difficultyMap = {
-                        1: 'again',
-                        3: 'hard', 
-                        4: 'normal',
-                        5: 'easy'
-                    };
-                    
-                    setSessionStats(prev => ({
-                        ...prev,
-                        cardsStudied: prev.cardsStudied + 1,
-                        [`${difficultyMap[difficulty]}Cards`]: prev[`${difficultyMap[difficulty]}Cards`] + 1,
-                        newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
-                        reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
-                    }));
-                    
-                
-                // Auto-save updated vocabulary
-                setTimeout(() => {
-                    saveToDatabase(updatedVocabulary);
-                }, 500);
-            };
+            const updateCardProgress = async (cardIndex, difficulty) => {
+    const card = studyCards[cardIndex];
+    const originalIndex = allVocabulary.findIndex(c => 
+        c.czech === card.czech && c.english === card.english
+    );
+    
+    if (originalIndex === -1) return;
+    
+    const updatedCard = {
+        ...allVocabulary[originalIndex],
+        ...calculateNextReview(allVocabulary[originalIndex], difficulty)
+    };
+    
+    const updatedVocabulary = [...allVocabulary];
+    updatedVocabulary[originalIndex] = updatedCard;
+    setAllVocabulary(updatedVocabulary);
+    
+    // Update session stats
+    const difficultyMap = {
+        1: 'again',
+        3: 'hard', 
+        4: 'normal',
+        5: 'easy'
+    };
+    
+    setSessionStats(prev => ({
+        ...prev,
+        cardsStudied: prev.cardsStudied + 1,
+        [`${difficultyMap[difficulty]}Cards`]: prev[`${difficultyMap[difficulty]}Cards`] + 1,
+        newCards: !card.lastReviewed ? prev.newCards + 1 : prev.newCards,
+        reviewCards: card.lastReviewed ? prev.reviewCards + 1 : prev.reviewCards
+    }));
+    
+    // IMMEDIATE save - don't wait
+    try {
+        await saveToDatabase(updatedVocabulary);
+        console.log('Card progress saved immediately');
+    } catch (error) {
+        console.error('Failed to save card progress:', error);
+    }
+};
 
 
 
@@ -364,6 +365,8 @@ const createLogger = (component) => {
         logger.debug('Vocabulary loading completed');
     }
 };
+            let savePromise = null;
+
             const saveToDatabase = async (vocabulary) => {
     if (!currentUser || isSyncing) {
         logger.warn('Save blocked', { 
@@ -374,71 +377,56 @@ const createLogger = (component) => {
         return;
     }
     
+    // If there's already a save in progress, wait for it
+    if (savePromise) {
+        await savePromise;
+    }
+    
     logger.trace('saveToDatabase', { userId: currentUser.id, cardCount: vocabulary.length });
     
-    try {
-        setIsSyncing(true);
-        logger.info('Starting vocabulary save', { 
-            userId: currentUser.id, 
-            cardCount: vocabulary.length 
-        });
-        
-        const { data, error } = await supabaseClient
-            .from('user_vocabulary')
-            .upsert({
-                user_id: currentUser.id,
-                vocabulary: vocabulary,
-                updated_at: new Date().toISOString()
-            }, {
-                onConflict: 'user_id'
-            });
-
-        if (error) {
-            logger.error('Save error', { 
-                error: error.message, 
-                code: error.code, 
-                userId: currentUser.id 
+    savePromise = (async () => {
+        try {
+            setIsSyncing(true);
+            logger.info('Starting vocabulary save', { 
+                userId: currentUser.id, 
+                cardCount: vocabulary.length 
             });
             
-            if (error.code === '42501') {
-                logger.error('Permission denied during save');
-                alert('Permission denied. Please check your account permissions.');
-            } else if (error.code === '23505') {
-                logger.info('Conflict detected, trying update instead');
-                const { error: updateError } = await supabaseClient
-                    .from('user_vocabulary')
-                    .update({
-                        vocabulary: vocabulary,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('user_id', currentUser.id);
-                    
-                if (updateError) {
-                    logger.error('Update also failed', { error: updateError.message });
-                    alert('Failed to save vocabulary. Please try again.');
-                } else {
-                    setLastSyncTime(new Date());
-                    logger.info('Successfully updated vocabulary via fallback');
-                }
+            const { data, error } = await supabaseClient
+                .from('user_vocabulary')
+                .upsert({
+                    user_id: currentUser.id,
+                    vocabulary: vocabulary,
+                    updated_at: new Date().toISOString()
+                }, {
+                    onConflict: 'user_id'
+                });
+
+            if (error) {
+                logger.error('Save error', { 
+                    error: error.message, 
+                    code: error.code, 
+                    userId: currentUser.id 
+                });
+                throw error;
             } else {
-                alert(`Failed to sync vocabulary: ${error.message}`);
+                setLastSyncTime(new Date());
+                logger.info('Successfully synced vocabulary', { cardCount: vocabulary.length });
             }
-        } else {
-            setLastSyncTime(new Date());
-            logger.info('Successfully synced vocabulary', { cardCount: vocabulary.length });
-        }
-    } catch (error) {
-        logger.error('Exception during save', { 
-            error: error.message, 
-            stack: error.stack 
-        });
-        alert('Sync failed due to network error. Please check your connection.');
-    } finally {
-        setTimeout(() => {
+        } catch (error) {
+            logger.error('Exception during save', { 
+                error: error.message, 
+                stack: error.stack 
+            });
+            throw error;
+        } finally {
             setIsSyncing(false);
+            savePromise = null;
             logger.debug('Save process completed');
-        }, 1000);
-    }
+        }
+    })();
+    
+    return savePromise;
 };
 
             const submitFeedback = async () => {
@@ -539,8 +527,9 @@ const createLogger = (component) => {
     });
     setCurrentScreen('study');
 };
-            const handleAnswer = (grade) => {
-    updateCardProgress(currentCardIndex, grade);
+            const handleAnswer = async (grade) => {
+    // Wait for the card update to complete
+    await updateCardProgress(currentCardIndex, grade);
     
     setTimeout(() => {
         const updatedStudyCards = studyCards.filter((_, index) => index !== currentCardIndex);
@@ -554,7 +543,7 @@ const createLogger = (component) => {
             }
             setShowAnswer(false);
         }
-    }, 500);
+    }, 100);
 };
 
             // Smart word selection function
@@ -974,15 +963,31 @@ const checkTypingAnswer = () => {
                 };
             }, []);
 
-            useEffect(() => {
-                if (allVocabulary.length > 0 && !isLoading && currentUser && isLoggedIn && !isSyncing) {
-                    const timeoutId = setTimeout(() => {
-                        saveToDatabase(allVocabulary);
-                    }, 3000);
+            // Add save-on-exit handler
+useEffect(() => {
+    const handleBeforeUnload = async (event) => {
+        if (allVocabulary.length > 0 && currentUser) {
+            // Force immediate save before closing
+            event.preventDefault();
+            await saveToDatabase(allVocabulary);
+        }
+    };
 
-                    return () => clearTimeout(timeoutId);
-                }
-            }, [allVocabulary, currentUser?.id]);
+    const handleVisibilityChange = async () => {
+        if (document.hidden && allVocabulary.length > 0 && currentUser) {
+            // Save when app goes to background
+            await saveToDatabase(allVocabulary);
+        }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+}, [allVocabulary, currentUser]);
 
             const currentCard = studyCards[currentCardIndex];
 
