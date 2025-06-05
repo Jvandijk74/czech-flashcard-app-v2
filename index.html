@@ -96,15 +96,7 @@ const createLogger = (component) => {
             const [sessionWrongCards, setSessionWrongCards] = useState([]);
             const [feedbackText, setFeedbackText] = useState('');
             const [feedbackType, setFeedbackType] = useState('');
-            const [currentLanguage, setCurrentLanguage] = useState('en'); // Interface language
-const [availableLanguagePairs, setAvailableLanguagePairs] = useState([]);
-const [activeLanguagePair, setActiveLanguagePair] = useState(null);
-const [isLoadingLanguagePairs, setIsLoadingLanguagePairs] = useState(false);
             const logger = createLogger('CzechFlashcardApp');
-            // Translation function
-const t = (key) => {
-    return translations[currentLanguage]?.[key] || translations.en[key] || key;
-};
 // Spaced Repetition Algorithm - Based on Anki's SM-2 algorithm
 
 
@@ -372,13 +364,81 @@ const t = (key) => {
         logger.debug('Vocabulary loading completed');
     }
 };
-           const saveToDatabase = async (vocabulary) => {
-    if (!activeLanguagePair) {
-        // If no active language pair, don't save
-        logger.warn('No active language pair for saving');
+            const saveToDatabase = async (vocabulary) => {
+    if (!currentUser || isSyncing) {
+        logger.warn('Save blocked', { 
+            hasUser: !!currentUser, 
+            isSyncing, 
+            vocabularyLength: vocabulary?.length 
+        });
         return;
     }
-    return saveLanguagePairVocabulary(vocabulary);
+    
+    logger.trace('saveToDatabase', { userId: currentUser.id, cardCount: vocabulary.length });
+    
+    try {
+        setIsSyncing(true);
+        logger.info('Starting vocabulary save', { 
+            userId: currentUser.id, 
+            cardCount: vocabulary.length 
+        });
+        
+        const { data, error } = await supabaseClient
+            .from('user_vocabulary')
+            .upsert({
+                user_id: currentUser.id,
+                vocabulary: vocabulary,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            });
+
+        if (error) {
+            logger.error('Save error', { 
+                error: error.message, 
+                code: error.code, 
+                userId: currentUser.id 
+            });
+            
+            if (error.code === '42501') {
+                logger.error('Permission denied during save');
+                alert('Permission denied. Please check your account permissions.');
+            } else if (error.code === '23505') {
+                logger.info('Conflict detected, trying update instead');
+                const { error: updateError } = await supabaseClient
+                    .from('user_vocabulary')
+                    .update({
+                        vocabulary: vocabulary,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('user_id', currentUser.id);
+                    
+                if (updateError) {
+                    logger.error('Update also failed', { error: updateError.message });
+                    alert('Failed to save vocabulary. Please try again.');
+                } else {
+                    setLastSyncTime(new Date());
+                    logger.info('Successfully updated vocabulary via fallback');
+                }
+            } else {
+                alert(`Failed to sync vocabulary: ${error.message}`);
+            }
+        } else {
+            setLastSyncTime(new Date());
+            logger.info('Successfully synced vocabulary', { cardCount: vocabulary.length });
+        }
+    } catch (error) {
+        logger.error('Exception during save', { 
+            error: error.message, 
+            stack: error.stack 
+        });
+        alert('Sync failed due to network error. Please check your connection.');
+    } finally {
+        setTimeout(() => {
+            setIsSyncing(false);
+            logger.debug('Save process completed');
+        }, 1000);
+    }
 };
 
             const submitFeedback = async () => {
@@ -411,126 +471,6 @@ const t = (key) => {
     } catch (error) {
         console.error('Unexpected error:', error);
         alert('Unexpected error. Please try again.');
-    }
-};
-
-// create user language 
-            const loadUserLanguagePairs = async (user) => {
-    try {
-        setIsLoadingLanguagePairs(true);
-        const { data, error } = await supabaseClient
-            .from('user_language_pairs')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true });
-
-        if (error) {
-            console.error('Error loading language pairs:', error);
-            return;
-        }
-
-        setAvailableLanguagePairs(data || []);
-        
-        const activePair = data?.find(pair => pair.is_active) || data?.[0];
-        if (activePair) {
-            setActiveLanguagePair(activePair);
-            setAllVocabulary(activePair.vocabulary || []);
-        }
-    } catch (error) {
-        console.error('Exception loading language pairs:', error);
-    } finally {
-        setIsLoadingLanguagePairs(false);
-    }
-};
-            
-// Create new language pair
-const createLanguagePair = async (learningLang, nativeLang) => {
-    try {
-        const { data, error } = await supabaseClient
-            .from('user_language_pairs')
-            .insert([{
-                user_id: currentUser.id,
-                learning_language: learningLang,
-                native_language: nativeLang,
-                vocabulary: [],
-                is_active: availableLanguagePairs.length === 0 // First pair is active
-            }])
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Error creating language pair:', error);
-            return false;
-        }
-
-        setAvailableLanguagePairs(prev => [...prev, data]);
-        if (availableLanguagePairs.length === 0) {
-            setActiveLanguagePair(data);
-            setAllVocabulary([]);
-        }
-        return true;
-    } catch (error) {
-        console.error('Exception creating language pair:', error);
-        return false;
-    }
-};
-
-// Switch active language pair
-const switchLanguagePair = async (pairId) => {
-    try {
-        // Update database - mark all as inactive, then set selected as active
-        await supabaseClient
-            .from('user_language_pairs')
-            .update({ is_active: false })
-            .eq('user_id', currentUser.id);
-            
-        await supabaseClient
-            .from('user_language_pairs')
-            .update({ is_active: true })
-            .eq('id', pairId);
-
-        // Update local state
-        const newActivePair = availableLanguagePairs.find(pair => pair.id === pairId);
-        if (newActivePair) {
-            setActiveLanguagePair(newActivePair);
-            setAllVocabulary(newActivePair.vocabulary || []);
-            
-            // Update the pairs list
-            setAvailableLanguagePairs(prev => 
-                prev.map(pair => ({
-                    ...pair,
-                    is_active: pair.id === pairId
-                }))
-            );
-        }
-    } catch (error) {
-        console.error('Error switching language pair:', error);
-    }
-};
-
-// Save vocabulary for active language pair
-const saveLanguagePairVocabulary = async (vocabulary) => {
-    if (!activeLanguagePair || !currentUser || isSyncing) return;
-    
-    try {
-        setIsSyncing(true);
-        const { error } = await supabaseClient
-            .from('user_language_pairs')
-            .update({
-                vocabulary: vocabulary,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', activeLanguagePair.id);
-
-        if (error) {
-            console.error('Error saving language pair vocabulary:', error);
-        } else {
-            setLastSyncTime(new Date());
-        }
-    } catch (error) {
-        console.error('Exception saving language pair vocabulary:', error);
-    } finally {
-        setIsSyncing(false);
     }
 };
 
@@ -963,97 +903,70 @@ const checkTypingAnswer = () => {
             // Initialize app and check for existing session
             useEffect(() => {
                 const checkSession = async () => {
-    try {
-        console.log('Starting session check...');
-        setIsLoading(true);
-        
-        // Remove the timeout race - just check session directly
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        
-        if (error) {
-            console.error('Session check error:', error);
-            setConnectionError(`Connection failed: ${error.message}`);
-            setCurrentScreen('login');
-            return;
-        }
-        
-        if (session?.user) {
-            console.log('Found existing session for user:', session.user.email);
-            setCurrentUser(session.user);
-            setUserId(session.user.id);
-            setEmail(session.user.email);
-            setIsLoggedIn(true);
-            
-            // Load language pairs instead of vocabulary
-            await loadUserLanguagePairs(session.user);
-            
-            // Check if user has any language pairs
-            const { data: pairs } = await supabaseClient
-                .from('user_language_pairs')
-                .select('id')
-                .eq('user_id', session.user.id)
-                .limit(1);
-            
-            if (!pairs || pairs.length === 0) {
-                setCurrentScreen('addLanguagePair');
-            } else {
-                setCurrentScreen('home');
-            }
-        } else {
-            console.log('No existing session found');
-            setCurrentScreen('login');
-        }
-    } catch (error) {
-        console.error('Session check failed:', error);
-        setCurrentScreen('login');
-        setConnectionError('Unable to connect to server. Please check your internet connection and try again.');
-    } finally {
-        setIsLoading(false);
-    }
-};
+                    try {
+                        console.log('Starting session check...');
+                        setIsLoading(true);
+                        
+                        const sessionPromise = supabaseClient.auth.getSession();
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Session check timeout')), 10000)
+                        );
+                        
+                        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
+                        
+                        if (error) {
+                            console.error('Session check error:', error);
+                            setCurrentScreen('login');
+                            return;
+                        }
+                        
+                        if (session?.user) {
+                            console.log('Found existing session for user:', session.user.email);
+                            setCurrentUser(session.user);
+                            setUserId(session.user.id);
+                            setEmail(session.user.email);
+                            setIsLoggedIn(true);
+                            setCurrentScreen('home');
+                            await loadUserVocabulary(session.user);
+                        } else {
+                            console.log('No existing session found');
+                            setCurrentScreen('login');
+                        }
+                    } catch (error) {
+                        console.error('Session check failed:', error);
+                        setCurrentScreen('login');
+                        setConnectionError('Connection failed. Please check your internet connection.');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
                 const timer = setTimeout(checkSession, 500);
 
                 const { data: subscription } = supabaseClient.auth.onAuthStateChange(
-    async (event, session) => {
-        console.log('Auth state change:', event, session?.user?.email);
-        
-        if (event === 'SIGNED_IN' && session?.user) {
-            setCurrentUser(session.user);
-            setUserId(session.user.id);
-            setEmail(session.user.email);
-            setIsLoggedIn(true);
-            setConnectionError(null);
-            
-            // Load language pairs for new sign-in
-            await loadUserLanguagePairs(session.user);
-            
-            // Check if user has language pairs
-            const { data: pairs } = await supabaseClient
-                .from('user_language_pairs')
-                .select('id')
-                .eq('user_id', session.user.id)
-                .limit(1);
-            
-            if (!pairs || pairs.length === 0) {
-                setCurrentScreen('addLanguagePair');
-            } else {
-                setCurrentScreen('home');
-            }
-        } else if (event === 'SIGNED_OUT') {
-            setCurrentUser(null);
-            setUserId('');
-            setEmail('');
-            setIsLoggedIn(false);
-            setCurrentScreen('login');
-            setAllVocabulary([]);
-            setAvailableLanguagePairs([]);
-            setActiveLanguagePair(null);
-            setLastSyncTime(null);
-        } else if (event === 'TOKEN_REFRESHED') {
-            console.log('Token refreshed successfully');
-        }
-    }
-);
+                    async (event, session) => {
+                        console.log('Auth state change:', event, session?.user?.email);
+                        
+                        if (event === 'SIGNED_IN' && session?.user) {
+                            setCurrentUser(session.user);
+                            setUserId(session.user.id);
+                            setEmail(session.user.email);
+                            setIsLoggedIn(true);
+                            setCurrentScreen('home');
+                            setConnectionError(null);
+                        } else if (event === 'SIGNED_OUT') {
+                            setCurrentUser(null);
+                            setUserId('');
+                            setEmail('');
+                            setIsLoggedIn(false);
+                            setCurrentScreen('login');
+                            setAllVocabulary([]);
+                            setLastSyncTime(null);
+                        } else if (event === 'TOKEN_REFRESHED') {
+                            console.log('Token refreshed successfully');
+                        }
+                    }
+                );
 
                 return () => {
                     clearTimeout(timer);
@@ -1230,147 +1143,6 @@ const checkTypingAnswer = () => {
                 );
             }
 
-
-            // Language Pair Selection Screen
-if (currentScreen === 'languagePairSelection') {
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
-            <div className="max-w-md mx-auto">
-                <div className="bg-white rounded-2xl shadow-2xl p-8">
-                    <h2 className="text-2xl font-bold text-center mb-6">Select Language to Practice</h2>
-                    
-                    {availableLanguagePairs.length > 0 && (
-                        <div className="mb-6">
-                            <h3 className="text-lg font-semibold mb-4">Your Language Pairs:</h3>
-                            <div className="space-y-3">
-                                {availableLanguagePairs.map((pair) => (
-                                    <div 
-                                        key={pair.id}
-                                        onClick={() => {
-                                            switchLanguagePair(pair.id);
-                                            setCurrentScreen('home');
-                                        }}
-                                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                                            pair.is_active 
-                                                ? 'border-blue-500 bg-blue-50' 
-                                                : 'border-gray-200 hover:border-blue-300'
-                                        }`}
-                                    >
-                                        <div className="flex justify-between items-center">
-                                            <div>
-                                                <div className="font-semibold">
-                                                    {pair.native_language} → {pair.learning_language}
-                                                </div>
-                                                <div className="text-sm text-gray-600">
-                                                    {(pair.vocabulary || []).length} cards
-                                                </div>
-                                            </div>
-                                            {pair.is_active && (
-                                                <div className="text-blue-600 font-semibold">Active</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    
-                    <button
-                        onClick={() => setCurrentScreen('addLanguagePair')}
-                        className="w-full bg-green-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors mb-4"
-                    >
-                        + Add New Language Pair
-                    </button>
-                    
-                    {availableLanguagePairs.length > 0 && (
-                        <button
-                            onClick={() => setCurrentScreen('home')}
-                            className="w-full bg-gray-200 text-gray-700 py-3 px-6 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
-                        >
-                            Continue with Current Selection
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// Add Language Pair Screen
-if (currentScreen === 'addLanguagePair') {
-    const [newLearningLang, setNewLearningLang] = useState('');
-    const [newNativeLang, setNewNativeLang] = useState('');
-    
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-green-600 to-blue-700 p-4 flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-                <h2 className="text-2xl font-bold text-center mb-6">Add Language Pair</h2>
-                
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Your Native Language
-                        </label>
-                        <select 
-                            value={newNativeLang} 
-                            onChange={(e) => setNewNativeLang(e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg"
-                        >
-                            <option value="">Select...</option>
-                            <option value="dutch">🇳🇱 Dutch</option>
-                            <option value="english">🇺🇸 English</option>
-                            <option value="spanish">🇪🇸 Spanish</option>
-                            <option value="french">🇫🇷 French</option>
-                            <option value="german">🇩🇪 German</option>
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Language You Want to Learn
-                        </label>
-                        <select 
-                            value={newLearningLang} 
-                            onChange={(e) => setNewLearningLang(e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg"
-                        >
-                            <option value="">Select...</option>
-                            <option value="czech">🇨🇿 Czech</option>
-                            <option value="english">🇺🇸 English</option>
-                            <option value="spanish">🇪🇸 Spanish</option>
-                            <option value="french">🇫🇷 French</option>
-                            <option value="german">🇩🇪 German</option>
-                            <option value="italian">🇮🇹 Italian</option>
-                        </select>
-                    </div>
-                    
-                    <div className="flex gap-4">
-                        <button
-                            onClick={async () => {
-                                if (newLearningLang && newNativeLang) {
-                                    const success = await createLanguagePair(newLearningLang, newNativeLang);
-                                    if (success) {
-                                        setCurrentScreen('languagePairSelection');
-                                    }
-                                }
-                            }}
-                            disabled={!newLearningLang || !newNativeLang}
-                            className="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50"
-                        >
-                            Create Pair
-                        </button>
-                        <button
-                            onClick={() => setCurrentScreen('languagePairSelection')}
-                            className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
             // Home Screen
 if (currentScreen === 'home') {
     const dueCards = getDueCardsCount();
@@ -1382,32 +1154,19 @@ if (currentScreen === 'home') {
             <div className="max-w-md mx-auto">
                 <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
                     <div className="flex justify-between items-center mb-6">
-    <div className="text-left">
-        <div className="text-sm text-gray-500">Welcome back,</div>
-        <div className="font-semibold text-gray-800">
-            {currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0]}
-        </div>
-        {activeLanguagePair && (
-            <div className="text-xs text-blue-600 mt-1">
-                {activeLanguagePair.native_language} → {activeLanguagePair.learning_language}
-            </div>
-        )}
-    </div>
-    <div className="text-right">
-        <button
-            onClick={() => setCurrentScreen('languagePairSelection')}
-            className="text-sm text-blue-600 hover:text-blue-700 underline mb-2 block"
-        >
-            Switch Language
-        </button>
-        <button
-            onClick={handleLogout}
-            className="text-sm text-red-600 hover:text-red-700 underline"
-        >
-            Logout
-        </button>
-    </div>
-</div>
+                        <div className="text-left">
+                            <div className="text-sm text-gray-500">Welcome back,</div>
+                            <div className="font-semibold text-gray-800">
+                                {currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0]}
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleLogout}
+                            className="text-sm text-red-600 hover:text-red-700 underline"
+                        >
+                            Logout
+                        </button>
+                    </div>
 
                     <div className="text-6xl mb-6">🇨🇿</div>
                     <h1 className="text-3xl font-bold text-gray-800 mb-4">Czech Vocabulary</h1>
