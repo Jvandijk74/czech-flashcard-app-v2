@@ -414,6 +414,35 @@ const t = (key) => {
     }
 };
 
+// create user language 
+            const loadUserLanguagePairs = async (user) => {
+    try {
+        setIsLoadingLanguagePairs(true);
+        const { data, error } = await supabaseClient
+            .from('user_language_pairs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('Error loading language pairs:', error);
+            return;
+        }
+
+        setAvailableLanguagePairs(data || []);
+        
+        const activePair = data?.find(pair => pair.is_active) || data?.[0];
+        if (activePair) {
+            setActiveLanguagePair(activePair);
+            setAllVocabulary(activePair.vocabulary || []);
+        }
+    } catch (error) {
+        console.error('Exception loading language pairs:', error);
+    } finally {
+        setIsLoadingLanguagePairs(false);
+    }
+};
+            
 // Create new language pair
 const createLanguagePair = async (learningLang, nativeLang) => {
     try {
