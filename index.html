@@ -972,52 +972,46 @@ const checkTypingAnswer = () => {
         
         if (error) {
             console.error('Session check error:', error);
+            setConnectionError(`Connection failed: ${error.message}`);
             setCurrentScreen('login');
             return;
         }
-                        
-                        if (error) {
-                            console.error('Session check error:', error);
-                            setCurrentScreen('login');
-                            return;
-                        }
-                        
-                        if (session?.user) {
-    console.log('Found existing session for user:', session.user.email);
-    setCurrentUser(session.user);
-    setUserId(session.user.id);
-    setEmail(session.user.email);
-    setIsLoggedIn(true);
-    
-    // Load language pairs instead of vocabulary
-    await loadUserLanguagePairs(session.user);
-    
-    // Check if user has any language pairs
-    const { data: pairs } = await supabaseClient
-        .from('user_language_pairs')
-        .select('id')
-        .eq('user_id', session.user.id)
-        .limit(1);
-    
-    if (!pairs || pairs.length === 0) {
-        setCurrentScreen('addLanguagePair');
-    } else {
-        setCurrentScreen('home');
+        
+        if (session?.user) {
+            console.log('Found existing session for user:', session.user.email);
+            setCurrentUser(session.user);
+            setUserId(session.user.id);
+            setEmail(session.user.email);
+            setIsLoggedIn(true);
+            
+            // Load language pairs instead of vocabulary
+            await loadUserLanguagePairs(session.user);
+            
+            // Check if user has any language pairs
+            const { data: pairs } = await supabaseClient
+                .from('user_language_pairs')
+                .select('id')
+                .eq('user_id', session.user.id)
+                .limit(1);
+            
+            if (!pairs || pairs.length === 0) {
+                setCurrentScreen('addLanguagePair');
+            } else {
+                setCurrentScreen('home');
+            }
+        } else {
+            console.log('No existing session found');
+            setCurrentScreen('login');
+        }
+    } catch (error) {
+        console.error('Session check failed:', error);
+        setCurrentScreen('login');
+        setConnectionError('Unable to connect to server. Please check your internet connection and try again.');
+    } finally {
+        setIsLoading(false);
     }
-} else {
-    console.log('No existing session found');
-    setCurrentScreen('login');
-}
-                    } catch (error) {
-                        console.error('Session check failed:', error);
-                        setCurrentScreen('login');
-                        setConnectionError('Connection failed. Please check your internet connection.');
-                    } finally {
-                        setIsLoading(false);
-                    }
-                };
-
-                checkSession();
+};
+                const timer = setTimeout(checkSession, 500);
 
                 const { data: subscription } = supabaseClient.auth.onAuthStateChange(
     async (event, session) => {
