@@ -963,16 +963,18 @@ const checkTypingAnswer = () => {
             // Initialize app and check for existing session
             useEffect(() => {
                 const checkSession = async () => {
-                    try {
-                        console.log('Starting session check...');
-                        setIsLoading(true);
-                        
-                        const sessionPromise = supabaseClient.auth.getSession();
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Session check timeout')), 10000)
-                        );
-                        
-                        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
+    try {
+        console.log('Starting session check...');
+        setIsLoading(true);
+        
+        // Remove the timeout race - just check session directly
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+            console.error('Session check error:', error);
+            setCurrentScreen('login');
+            return;
+        }
                         
                         if (error) {
                             console.error('Session check error:', error);
@@ -1015,7 +1017,7 @@ const checkTypingAnswer = () => {
                     }
                 };
 
-                const timer = setTimeout(checkSession, 500);
+                checkSession();
 
                 const { data: subscription } = supabaseClient.auth.onAuthStateChange(
     async (event, session) => {
